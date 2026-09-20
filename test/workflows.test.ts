@@ -313,7 +313,11 @@ describe('finding a file with no planning model', () => {
     // The whole point of the rewrite: it does not stop to interrogate.
     assert.deepEqual(asked, [])
     // Filters are parsed locally, so Jev is only ever asked to route.
-    assert.ok(!jev.requests.some((r) => r.includes('fileType') || r.includes('location')))
+    // Filters come from the one understanding call, not from a separate
+    // round of workflow-specific questions.
+    const questionsSeen = jev.requests.map((r: unknown) => JSON.stringify(r)).join(' ')
+    assert.ok(!questionsSeen.includes('fileType'))
+    assert.ok(!questionsSeen.includes('shouldOpen'))
   })
 
   test('the runners-up come back as evidence rather than as a quiz', async () => {

@@ -70,3 +70,27 @@ test('document vocabulary supports other names without treating cooking pans as 
   assert.deepEqual(parseQuery('find my frying pan photo').words, ['frying', 'pan'])
   assert.ok(distinctiveWords('find आधार').includes('आधार'))
 })
+
+test('metadata reads need no permission, contents still do', async () => {
+  const { fileTools } = await import('../src/runtime/tools/files.js')
+  const byName = Object.fromEntries(fileTools.map((t) => [t.name, t]))
+
+  // Looking at a folder listing is what the user already sees in Finder.
+  // Asking permission for it was most of why Kibu felt like an interrogation.
+  for (const name of ['files_list', 'files_inspect', 'files_search', 'files_find']) {
+    assert.deepEqual(byName[name]!.scopes({ path: '/x', root: '/x', terms: 'x' } as never), [], name)
+  }
+  // File contents go to a model, so that one still asks.
+  assert.ok(byName.files_read!.scopes({ path: '/x' } as never).length > 0)
+  // Writing always asks.
+  assert.ok(byName.files_create_folder!.scopes({ path: '/x' } as never).length > 0)
+})
+
+test('a protected location is still refused, now that no scope check runs', async () => {
+  const { fileTools } = await import('../src/runtime/tools/files.js')
+  const list = fileTools.find((t) => t.name === 'files_list')!
+  await assert.rejects(
+    () => list.precondition!({ path: `${process.env.HOME}/.ssh` } as never, {} as never),
+    /protected/i
+  )
+})

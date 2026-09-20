@@ -55,6 +55,7 @@ export const filesFind: ToolDefinition = {
     terms: z.string().describe('The distinctive words to look for, e.g. "ethernet frames" — not the whole sentence'),
     extensions: z.array(z.string()).optional().describe('Restrict to these extensions, e.g. [".pdf"]'),
     modifiedAfter: z.number().optional().describe('Unix ms; only files changed since then'),
+    minBytes: z.number().optional().describe('Only files at least this large, for "big files" requests'),
     folder: z.string().optional().describe('Restrict to one folder. Omit to search the whole home folder.'),
     limit: z.number().int().min(1).max(50).default(12)
   }),
@@ -68,6 +69,7 @@ export const filesFind: ToolDefinition = {
       root,
       ...(i.extensions ? { extensions: i.extensions } : {}),
       ...(i.modifiedAfter ? { modifiedAfter: i.modifiedAfter } : {}),
+      ...(i.minBytes ? { minBytes: i.minBytes } : {}),
       limit: i.limit
     })
     ctx.observe({
@@ -78,6 +80,12 @@ export const filesFind: ToolDefinition = {
     })
     return { result: { matches: results } }
   }
+}
+
+export function formatSize(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
 function nameHits(path: string, words: string[]): number {
@@ -92,6 +100,8 @@ export interface FindOptions {
   root: string
   extensions?: string[]
   modifiedAfter?: number
+  /** Only files at least this many bytes: "the big ones", "what is eating space". */
+  minBytes?: number
   limit: number
 }
 
@@ -103,11 +113,12 @@ export async function findFiles(opts: FindOptions): Promise<FoundFile[]> {
   const concepts = documentTerms(opts.terms)
   const words = opts.words ?? distinctiveWords(removeDocumentWords(opts.terms))
   const terms = [...new Set([...words, ...concepts])]
-  const query = buildQuery(terms, opts.extensions, opts.modifiedAfter, concepts)
+  const query = buildQuery(terms, opts.extensions, opts.modifiedAfter, concepts, opts.minBytes)
   const args = ['-onlyin', root]
   args.push(query ?? 'kMDItemFSName == "*"c')
 
   const exts = opts.extensions?.map((e) => (e.startsWith('.') ? e : `.${e}`).toLowerCase())
+  const minBytes = opts.minBytes ?? 0
   const eligible = (path: string): boolean => {
     const rel = relative(root, path)
     return rel !== '..' && !rel.startsWith('../') && !isAbsolute(rel)
@@ -145,10 +156,11 @@ export async function findFiles(opts: FindOptions): Promise<FoundFile[]> {
     if (!entry) continue
     if (opts.modifiedAfter && entry.mtimeMs < opts.modifiedAfter) continue
     // mdfind applied these already; a fallback walk has not.
+    if (entry.size < minBytes) continue
     const lower = basename(entry.path).toLowerCase()
     if (exts?.length && !exts.some((e) => lower.endsWith(e))) continue
     if (!indexedPaths.has(entry.path) && terms.length && !(concepts.length ? concepts : terms).some((w) => searchableName(entry.path).includes(w))) continue
-    const { score, why } = rank(entry.path, terms, entry.mtimeMs, concepts)
+    const { score, why } = rank(entry.path, terms, entry.mtimeMs, concepts, minBytes > 0 ? entry.size : 0)
     scored.push({
       path: entry.path,
       name: basename(entry.path),
@@ -171,7 +183,13 @@ export async function findFiles(opts: FindOptions): Promise<FoundFile[]> {
  * it nothing. These signals are cheap, explainable, and the reason each hit
  * won is reported back so the user can see why.
  */
-function rank(path: string, words: string[], modifiedMs: number, concepts: string[] = []): { score: number; why: string } {
+function rank(
+  path: string,
+  words: string[],
+  modifiedMs: number,
+  concepts: string[] = [],
+  sizeBytes = 0
+): { score: number; why: string } {
   const name = searchableName(path)
   const stem = name.replace(/\.[^.]+$/, '')
   const reasons: string[] = []
@@ -202,6 +220,12 @@ function rank(path: string, words: string[], modifiedMs: number, concepts: strin
     reasons.push(`changed ${Math.round(days)}d ago`)
   } else if (days < 31) score += 6
 
+  // When the request was about size, size is the answer, so it dominates.
+  if (sizeBytes > 0) {
+    score += Math.min(60, (sizeBytes / (1024 * 1024 * 1024)) * 30)
+    reasons.unshift(formatSize(sizeBytes))
+  }
+
   // Where people keep things they are talking about.
   if (/\/(Downloads|Desktop|Documents)\//.test(path)) {
     score += 12
@@ -220,7 +244,13 @@ function rank(path: string, words: string[], modifiedMs: number, concepts: strin
  * Requiring every word found nothing at all, which is the worse failure —
  * ranking sorts out which of the loose matches actually wins.
  */
-function buildQuery(words: string[], extensions?: string[], modifiedAfter?: number, concepts: string[] = []): string | null {
+function buildQuery(
+  words: string[],
+  extensions?: string[],
+  modifiedAfter?: number,
+  concepts: string[] = [],
+  minBytes?: number
+): string | null {
   const clauses: string[] = []
   if (words.length) {
     const byName = (concepts.length ? concepts : words).map((w) => `kMDItemFSName == "*${escape(w)}*"cd`)
@@ -236,6 +266,7 @@ function buildQuery(words: string[], extensions?: string[], modifiedAfter?: numb
     const days = Math.max(1, Math.ceil((Date.now() - modifiedAfter) / 86_400_000))
     clauses.push(`kMDItemContentModificationDate >= $time.today(-${days})`)
   }
+  if (minBytes) clauses.push(`kMDItemFSSize >= ${Math.round(minBytes)}`)
   return clauses.length ? clauses.join(' && ') : null
 }
 

@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { parseQuery, type FoundFile } from '../tools/search.js'
+import { bytesFor, extensionsFor, folderFor, sinceFor } from '../model/understand.js'
 import type { Workflow, WorkflowContext, WorkflowResult } from './types.js'
 
 /**
@@ -31,20 +32,29 @@ export const findWorkflow: Workflow = {
 
   async run(request, droppedPaths, ctx): Promise<WorkflowResult> {
     const parsed = parseQuery(request)
+    // What kind of thing, how big, how recent, where — read once, by Jev when
+    // local rules were not certain. This is what makes "any movies to watch?"
+    // and "find big files" work: neither says "mp4" or gives a byte count.
+    const read = ctx.understanding()
+    const extensions = parsed.extensions.length ? parsed.extensions : extensionsFor(read.kind)
+    const minBytes = bytesFor(read.size)
+    const since = parsed.modifiedAfter ?? sinceFor(read.when)
+    const named = parsed.folder ?? folderFor(read.place)
     // Precedence: a folder the user actually put in front of me, then one they
     // named in the sentence, then their whole home. Searching everything is
     // the right default — the index makes it cheap — but never when they have
     // already said where to look.
     const scoped = ctx.authorizedRoots()
-    const root = scoped[0] ?? (parsed.folder ? join(homedir(), parsed.folder) : homedir())
+    const root = scoped[0] ?? (named ? join(homedir(), named) : homedir())
 
     ctx.progress('Searching…')
 
     const res = await ctx.run('files_find', {
       terms: parsed.words.join(' '),
       folder: root,
-      ...(parsed.extensions.length ? { extensions: parsed.extensions } : {}),
-      ...(parsed.modifiedAfter ? { modifiedAfter: parsed.modifiedAfter } : {}),
+      ...(extensions.length ? { extensions } : {}),
+      ...(since ? { modifiedAfter: since } : {}),
+      ...(minBytes ? { minBytes } : {}),
       limit: 8
     })
     if (!res.ok) {
@@ -59,7 +69,8 @@ export const findWorkflow: Workflow = {
           ? null
           : await ctx.run('files_find', {
               terms: parsed.words.join(' '),
-              ...(parsed.extensions.length ? { extensions: parsed.extensions } : {}),
+              ...(extensions.length ? { extensions } : {}),
+              ...(minBytes ? { minBytes } : {}),
               limit: 8
             })
       const widened = wider?.ok ? (wider.result as { matches: FoundFile[] }).matches : []

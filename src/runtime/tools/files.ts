@@ -3,7 +3,7 @@ import { filesFind } from './search.js'
 import { constants } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
-import { normalizePath } from '../authorization.js'
+import { isForbidden, normalizePath } from '../authorization.js'
 import type { ToolDefinition } from './registry.js'
 
 const MAX_READ_BYTES = 256 * 1024
@@ -76,9 +76,22 @@ export const filesList: ToolDefinition = {
     path: pathArg.describe('Folder to list'),
     includeHidden: z.boolean().default(false)
   }),
-  scopes: (i) => [{ kind: 'read', path: normalizePath(i.path) }],
+  /**
+   * No grant needed.
+   *
+   * This returns names, sizes and dates — what the user already sees in their
+   * own Finder window. Asking permission to look at a folder listing, before
+   * being allowed to answer "where is my invoice", was most of why Kibu felt
+   * like it was interrogating people. Contents are different: files_read
+   * still asks, because that text goes to a model.
+   */
+  scopes: () => [],
   async precondition(i) {
-    const path = normalizePath(i.path)
+    // The scope check no longer runs for metadata reads, so the protected
+    // locations are refused here instead of being quietly readable.
+    const target = normalizePath(i.path)
+    if (isForbidden(target)) throw new Error(`${target} is in a protected system location.`)
+    const path = target
     const s = await fs.stat(path).catch(() => null)
     if (!s) throw new Error(`${path} does not exist`)
     if (!s.isDirectory()) throw new Error(`${path} is not a folder`)
@@ -117,7 +130,16 @@ export const filesInspect: ToolDefinition = {
   description: 'Get metadata for one file or folder: kind, size, and dates. Cheaper than reading it.',
   capability: 'files.read',
   input: z.object({ path: pathArg }),
-  scopes: (i) => [{ kind: 'read', path: normalizePath(i.path) }],
+  /**
+   * No grant needed.
+   *
+   * This returns names, sizes and dates — what the user already sees in their
+   * own Finder window. Asking permission to look at a folder listing, before
+   * being allowed to answer "where is my invoice", was most of why Kibu felt
+   * like it was interrogating people. Contents are different: files_read
+   * still asks, because that text goes to a model.
+   */
+  scopes: () => [],
   async execute(i) {
     return { result: await statEntry(normalizePath(i.path)) }
   }
@@ -137,9 +159,19 @@ export const filesSearch: ToolDefinition = {
     maxDepth: z.number().int().min(1).max(6).default(3),
     limit: z.number().int().min(1).max(MAX_SEARCH_RESULTS).default(50)
   }),
-  scopes: (i) => [{ kind: 'read', path: normalizePath(i.root) }],
+  /**
+   * No grant needed.
+   *
+   * This returns names, sizes and dates — what the user already sees in their
+   * own Finder window. Asking permission to look at a folder listing, before
+   * being allowed to answer "where is my invoice", was most of why Kibu felt
+   * like it was interrogating people. Contents are different: files_read
+   * still asks, because that text goes to a model.
+   */
+  scopes: () => [],
   async execute(i, ctx) {
     const root = normalizePath(i.root)
+    if (isForbidden(root)) throw new Error(`${root} is in a protected system location.`)
     const matcher = i.namePattern
       ? new RegExp(
           '^' +

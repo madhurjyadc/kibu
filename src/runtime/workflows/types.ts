@@ -1,5 +1,6 @@
 import type { Questions, SystemOneResult, EntryType } from '@typesafe-ai/sdk'
 import type { Evidence, TaskState, UserQuestion } from '../../shared/types.js'
+import type { Understanding } from '../model/understand.js'
 
 /**
  * A workflow is a task shape we understand well enough to run without a
@@ -28,6 +29,8 @@ export interface WorkflowContext {
   checkpoint(): Promise<void>
   /** Folders this task may already work in, from drops or prior grants. */
   authorizedRoots(): string[]
+  /** How the request was read: kind, size, time, place. Computed once. */
+  understanding(): Understanding
 }
 
 export interface WorkflowResult {

@@ -4,6 +4,7 @@ import { Planner, addCost, type PlannerLike } from '../model/planner.js'
 import { Jev, summarizeJev } from '../model/jev.js'
 import { routeToWorkflow, type WorkflowContext } from '../workflows/index.js'
 import { describeSelf, isAboutKibu } from './about.js'
+import { fallbackUnderstanding, routeFor, understand, type Understanding } from '../model/understand.js'
 import { evaluateArithmetic } from './calculate.js'
 import { basename } from 'node:path'
 import { checkScopes, describeMissing, extendAuthorization, grantFor, normalizePath } from '../authorization.js'
@@ -98,6 +99,8 @@ export class TaskRunner {
   private evidence: Evidence[] = []
   private startedAt = Date.now()
   private holdsDesktop = false
+  /** How this request was read. Computed once, in understand(). */
+  private read: Understanding | null = null
 
   constructor(
     public readonly task: TaskState,
@@ -272,8 +275,18 @@ export class TaskRunner {
   private async understand(): Promise<void> {
     this.setStatus('observing', 'Reading your request')
     this.hooks.onPetState('thinking')
-    const route = await this.jev.routeRequest(this.task.request, this.deps.droppedPaths.length > 0)
-    this.log('info', 'jev', `routed to "${route.route}" (${route.reason})`, route)
+    // One structured reading of the request, used by routing and by every
+    // workflow after it. Local rules answer only the cases they are certain
+    // about; anything that needs English understood goes to Jev, in a single
+    // call that answers every question at once.
+    this.read = await understand(this.task.request, this.jev, this.deps.droppedPaths.length > 0)
+    const route = routeFor(this.read)
+    this.log(
+      'info',
+      'jev',
+      `read as ${this.read.action}/${this.read.kind}/${this.read.size}/${this.read.when} (${this.read.source}) → route "${route.route}"`,
+      this.read
+    )
 
     // A short follow-up after a recent exchange is a continuation, not a
     // vague request. Asking "what do you mean?" when the user just told you
@@ -453,6 +466,7 @@ export class TaskRunner {
       },
       log: (level, message, data) => this.log(level, 'workflow', message, data),
       checkpoint: () => this.checkpoint(),
+      understanding: () => this.read ?? fallbackUnderstanding(),
       authorizedRoots: () => [...this.task.authorization.writeRoots, ...this.task.authorization.readRoots]
     }
   }
