@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { filesFind } from './search.js'
 import { constants } from 'node:fs'
 import * as fs from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
@@ -373,6 +374,7 @@ export const filesCopy: ToolDefinition = {
 }
 
 export const fileTools: ToolDefinition[] = [
+  filesFind,
   filesList,
   filesInspect,
   filesSearch,

@@ -20,7 +20,7 @@ export interface ToolResultInput {
   isError: boolean
 }
 
-const SYSTEM_PROMPT = `You are the reasoning half of Kibu, a desktop assistant that does real work on a person's Mac.
+export const SYSTEM_PROMPT = `You are the reasoning half of Kibu, a desktop assistant that does real work on a person's Mac.
 
 You propose actions. Local code validates every one against what the user has authorized and then executes it. You never touch the machine directly, and a tool call that comes back with an error genuinely failed.
 

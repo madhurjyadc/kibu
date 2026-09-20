@@ -124,7 +124,17 @@ export const browserNavigate: ToolDefinition = {
     url: z.string().url(),
     waitUntil: z.enum(['load', 'domcontentloaded', 'networkidle']).default('domcontentloaded')
   }),
-  scopes: (i) => [{ kind: 'origin', url: i.url }],
+  /**
+   * Reading a page asks for nothing.
+   *
+   * This used to request authorization for every new origin, which meant a
+   * permission prompt to *look at a website* — in a browser with its own
+   * profile, its own cookies and none of the user's sessions. The prompt
+   * bought no safety and made the common case unusable. What deserves a
+   * prompt is anything that leaves a trace: uploading a file, or saving a
+   * download somewhere, and those still ask.
+   */
+  scopes: () => [],
   async execute(i, ctx) {
     const page = await ctx.browser.page()
     ctx.progress(`Opening ${new URL(i.url).hostname}`)

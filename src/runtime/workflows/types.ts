@@ -44,6 +44,16 @@ export interface Workflow {
   /** Shown to Jev as a routing option; write it as a description of the job. */
   description: string
   /**
+   * Which routes this workflow may run on.
+   *
+   * Keyword matching alone is not enough to claim a request: "open youtube
+   * and search for a good video" matches the file-finder's keywords, and
+   * without this gate it searched the Downloads folder for a video. The route
+   * — decided by local rules, or by Jev when they are unsure — has the final
+   * say over what kind of work a request is.
+   */
+  routes: string[]
+  /**
    * A cheap local check that this workflow could plausibly apply, used to
    * narrow the routing choices before Jev sees them.
    */

@@ -8,7 +8,7 @@ file describes each boundary and how to work with it.
 
 | Process | Owns | Must never |
 |---|---|---|
-| Renderer | Pet sprite, task panel | Touch Node, the filesystem, or any IPC channel outside the preload API |
+| Renderer | Pet sprite, the command line | Touch Node, the filesystem, or any IPC channel outside the preload API |
 | Electron main | Windows, SQLite, Keychain, undo, desktop session, global shortcuts | Run the agent loop, or call a model |
 | Runtime | The task loop, tool execution, model calls, browser, OS adapter | Draw UI, or bypass the tool registry |
 

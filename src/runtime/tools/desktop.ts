@@ -332,7 +332,65 @@ export const desktopCaptureWindow: ToolDefinition = {
   }
 }
 
+/**
+ * One call that answers "what am I looking at".
+ *
+ * Composing this out of desktop_list_apps plus desktop_inspect_window cost a
+ * round trip each and left the model deciding which window mattered. The
+ * frontmost window is almost always the answer, so this returns it together
+ * with what else is open, in one step.
+ */
+export const screenLook: ToolDefinition = {
+  name: 'screen_look',
+  description:
+    'Look at what is on screen right now: the window in front, the controls inside it, and what else is open. Start here whenever the user refers to what they are doing, looking at, or "this". Reads the accessibility tree, not pixels, so it is fast and exact.',
+  capability: 'desktop.observe',
+  input: z.object({
+    controls: z
+      .boolean()
+      .default(true)
+      .describe('Include the controls of the frontmost window. Turn off for a bare list of what is open.')
+  }),
+  scopes: () => [],
+  async execute(i, ctx) {
+    const [apps, front] = await Promise.all([ctx.os.listApps(), ctx.os.getFrontmostWindow()])
+    const others = apps
+      .filter((a) => a.windowCount > 0 && a.pid !== front?.app.pid)
+      .map((a) => ({ name: a.name, pid: a.pid, windows: a.windowCount }))
+
+    if (!front) {
+      ctx.observe({
+        kind: 'screen',
+        summary: `Nothing is frontmost; ${others.length} apps have windows open`,
+        data: { others },
+        staleAfterMs: SNAPSHOT_TTL_MS
+      })
+      return { result: { frontmost: null, alsoOpen: others } }
+    }
+
+    const summary = i.controls ? summarizeSnapshot(front, ctx.task.id) : null
+    ctx.observe({
+      kind: 'screen',
+      summary: `In front: ${front.app.name} — "${front.title}"` + (summary ? ` (${summary.elements.length} controls)` : ''),
+      data: { app: front.app.name, title: front.title, others: others.length },
+      staleAfterMs: SNAPSHOT_TTL_MS
+    })
+    return {
+      result: {
+        frontmost: summary ?? {
+          app: front.app.name,
+          pid: front.app.pid,
+          title: front.title,
+          frame: front.frame
+        },
+        alsoOpen: others
+      }
+    }
+  }
+}
+
 export const desktopTools: ToolDefinition[] = [
+  screenLook,
   desktopListApps,
   desktopInspectWindow,
   desktopFocusWindow,

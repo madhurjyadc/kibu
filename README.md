@@ -31,8 +31,9 @@ You will need:
 
 - **macOS 14 or later** (the helper targets `arm64-apple-macosx14.0`)
 - **Xcode command line tools**, for `swiftc`
-- **At least one API key**, added in Kibu's Settings and encrypted with the
-  macOS Keychain. No shared key is bundled.
+- **A model connection for open-ended app/browser tasks**. Local file search, arithmetic,
+  and capability help work without a model key. API keys can be added under Settings and encrypted with
+  the macOS Keychain. No shared key is bundled.
   - **A TypeSafe key** (`TYPESAFE_API_KEY`) for Jev. On its own this covers
     organising a folder, finding a file and renaming files — no planning model
     involved, ~100ms decisions, $0.042/MTok input with output free.
@@ -42,17 +43,48 @@ You will need:
   They are different providers with different keys. See *Doing tasks without
   the planning model* below for exactly which requests need which.
 
+  **No Anthropic credit?** If Claude Code is installed and signed in on this
+  Mac, turn on *think with the Claude Code on this Mac* under `/tune` and Kibu
+  plans through it instead — see *Planning through Claude Code* below.
+
 On first run, grant **Accessibility** permission when asked if you want Kibu to
 read and control native app windows. Without it, file and browser work still
 work; native app control does not, and Kibu will say so rather than guess.
 
 ## Using it
 
-- **Click the pet** or press **⌘⇧K** to open the task panel.
-- **Drop files or folders onto the pet** to scope a task to exactly those.
-- **"Use <app>"** in the composer sends the window you were in before the panel
-  opened, for "help me with what I'm doing here".
+Kibu sits on your desktop. Click it, or press **⌘⇧K**, to open its companion
+workspace. The minimal home has one input and Find, Organize, and Rename actions.
+The clock opens History; the sliders open Settings.
+
+- **Type a request and press Enter**, or use the send button. Quick actions fill
+  an editable draft, so you can choose the scope before anything runs.
+- **Drop files or folders onto the pet or panel** to scope a task to exactly those.
+- **Include the previous app** with the context toggle or **⌥Enter**.
+- **Answer a question** using its buttons, number shortcuts, or the composer
+  when free text is allowed. File previews show before/after names, and you can
+  expand the complete list.
+- **Watch, pause, stop, or inspect steps** from the task view. Settings and
+  History remain navigable while a task runs.
+- **Delete a task from History**, or clear all finished tasks. Deletion removes
+  the saved request, logs, and undo records; your actual files stay untouched.
+- **Open result files and web links**, reveal files in Finder, or undo supported
+  changes. Failed sends preserve the draft and attached paths.
+- **Esc** clears a draft, backs out of a page, or hides the workspace.
 - **⌘⇧Esc** stops Kibu immediately whenever it is driving your screen.
+
+Slash commands remain available in the composer as keyboard shortcuts:
+
+| | |
+|---|---|
+| `/undo` | put back what it moved |
+| `/steps` | every tool call of the last task, and whether each was verified |
+| `/past` | what it did before |
+| `/stop` | stop what it is doing |
+| `/keys` | the two API keys |
+| `/tune` | limits, habits and macOS permissions |
+| `/bench` | time every route on this Mac: Jev, the macOS index, local code |
+| `/help` | all of the above |
 
 ---
 
@@ -61,7 +93,7 @@ work; native app control does not, and Kibu will say so rather than guess.
 ```
 ┌─────────────┐   validated IPC   ┌──────────────┐   typed messages   ┌─────────────┐
 │  renderer   │ ────────────────▶ │ Electron main│ ─────────────────▶ │   runtime   │
-│ pet + panel │ ◀──────────────── │  (privileged)│ ◀───────────────── │  (agent)    │
+│ pet + line  │ ◀──────────────── │  (privileged)│ ◀───────────────── │  (agent)    │
 └─────────────┘                   └──────────────┘                    └──────┬──────┘
    no Node                          windows, DB,                             │
    no filesystem                    Keychain, undo               ┌───────────┴──────────┐
@@ -74,7 +106,7 @@ work; native app control does not, and Kibu will say so rather than guess.
 
 Three processes, on purpose:
 
-- **The renderer** draws the pet and the panel. It has no Node integration and
+- **The renderer** draws the pet and the line you type into. It has no Node integration and
   no filesystem access. Its entire reach into the rest of the app is the named
   method list in `src/preload/index.ts`, and every one of those lands on a main
   process handler that validates its arguments.
@@ -128,6 +160,7 @@ calls between them. No planning-model call happens at all.
 | "Organise this folder" | Code derives candidate groups (by type, by a project name recurring in the filenames, by month). Jev picks the grouping and assigns files to it. | No |
 | "Find the PDF I downloaded yesterday" | Jev turns the sentence into filters chosen from fixed sets. Code searches and ranks. | No |
 | "Rename these files consistently" | Jev picks one of five fixed naming schemes. Code applies it. | No |
+| "Make a folder called automaton in dev and open it in Zed" | Local patterns produce the steps; the macOS index resolves which folder and which app was meant. Jev only picks when several real candidates exist. | No |
 | Anything else | The full agent loop. | Yes |
 
 The constraint that keeps this honest: **a workflow may only ask Jev to choose
@@ -141,8 +174,61 @@ cannot skip a permission prompt or claim an unverified success.
 
 With only a TypeSafe key configured, Kibu still does all three of the above.
 A request that needs the planner then fails with a message naming what it *can*
-do, rather than a bare error. Turn workflows off in Settings to send everything
-through the planner.
+do, rather than a bare error. Turn workflows off under `/tune` to send
+everything through the planner.
+
+### Planning through Claude Code
+
+Kibu's loop talks to a `PlannerLike`, not to a vendor, so the planning model
+can be swapped without touching anything else.
+`src/runtime/model/claude-code-planner.ts` is a second implementation that
+drives the locally installed **Claude Code CLI** in print mode instead of the
+Anthropic API, using the login already on the machine. Turn it on under
+`/tune`; it only appears when the `claude` binary is actually found.
+
+Each step runs `claude -p --output-format json` with **every Claude Code tool
+denied** (`--allowed-tools ""`) and `--strict-mcp-config`, from a neutral
+working directory, so that process can only answer — it cannot read a file,
+run a command, or pick up the `CLAUDE.md` of whatever project you happen to be
+sitting in. It is handed Kibu's system prompt, Kibu's tool schemas, and the
+task's authorization, and it replies with one JSON object naming the calls it
+wants. The first turn opens a session; later turns `--resume` it, so the
+conversation is not resent each step.
+
+Everything downstream is unchanged: the proposal still goes through the same
+registry check, schema parse, authorization check, protected-path refusal,
+verifier and undo record. A planner that proposes something out of scope is
+stopped by the same code that stops the API planner.
+
+Two honest caveats:
+
+- **This is for running Kibu on your own machine with your own login.**
+  Anthropic does not permit third-party products to offer claude.ai login or
+  subscription rate limits to *their* users without prior approval
+  ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)),
+  so a build handed to other people has to use an API key.
+- **Nothing is billed, so the per-task spending limit does not apply on this
+  path** — it reports no cost rather than a number nobody is charged. The step
+  limit and the wall-clock limit are what bound a task here, and planning
+  steps consume your Claude Code usage allowance.
+
+### Running things on the command line
+
+`shell_run` exists, and the shape of it matters more than the feature. The
+dangerous way to build this is to let a model write a shell string and hand it
+to `sh -c`; one confused sentence, or one instruction hidden in a web page, is
+then arbitrary code execution. Instead:
+
+- **There is no shell.** Commands run through `execFile` with an argv array,
+  so pipes, redirects, `;`, backticks and `$(...)` are inert text.
+- **Only allowlisted programs run** — `mkdir`, `cp`, `mv`, `ls`, `git`, `npm`,
+  `open`, `node`, `python3` and a few more. `rm`, `sudo`, `curl` and their
+  relatives are absent by design rather than filtered afterwards, and
+  dangerous subcommands (`git push`, `npm publish`) are refused.
+- **Every path argument must resolve inside your home folder** and never into
+  a protected location — including via `../..`.
+
+`vetCommand` is that boundary, and it is tested directly.
 
 ### Jev
 
@@ -223,7 +309,32 @@ and anything done through synthetic input are not reversible.
 npm test
 ```
 
-93 tests covering authorization, file operations, the task loop, the
+129 tests covering authorization, file operations, the task loop, the
 planner-free workflows, Jev's request shape and caution-clamping, undo, crash
 recovery, and a real browser workflow against a local server. See `docs/TESTED.md` for exactly what that does and
 does not prove — in particular, neither model provider has been called live.
+
+### Interface checks
+
+```bash
+npm run test:ui
+```
+
+The Playwright renderer checks use a fake IPC bridge: they do not operate on
+user files, save real API keys, or call model providers. They cover editable
+suggestions, preserved drafts and attachments after failure, typed answers,
+expanded rename previews, navigation during work, connection saving, task
+controls, result links, undo, setup, and compact layouts. Screenshots are
+written to `/tmp/kibu-design` (override with `KIBU_SCREENSHOT_DIR`).
+
+See [`docs/DESIGN-REVIEW.md`](docs/DESIGN-REVIEW.md) for the redesign rationale,
+current capability audit, and recommended next work.
+
+### Natural document search
+
+Local search recognizes Aadhaar/aadhar/adhar/आधार and common document terms
+such as CV/resume and driving licence/license. It drops conversational words
+like “my PC,” prioritizes document names over unrelated recent files, and uses
+Spotlight's indexed text plus a bounded filename fallback. It does not perform
+OCR on unindexed scans. An unknown filename or encrypted/unindexed document can
+still require a narrower folder or another search term.

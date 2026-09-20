@@ -1,4 +1,5 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell, Tray, Menu, nativeImage } from 'electron'
+import { externalWebUrl } from '../shared/web-url.js'
+import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell, dialog, Tray, Menu, nativeImage } from 'electron'
 import { join, dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
@@ -8,20 +9,29 @@ import { Secrets } from './services/secrets.js'
 import { RuntimeHost } from './services/runtime-host.js'
 import { DesktopSession } from './services/desktop-session.js'
 import { undoTask } from './services/undo.js'
-import { createPetWindow } from './windows/pet.js'
-import { createPanelWindow, positionPanelNearPet, PANEL_MIN_HEIGHT, PANEL_MAX_HEIGHT } from './windows/panel.js'
+import { createPetWindow, setPetInteractive } from './windows/pet.js'
+import {
+  createPanelWindow,
+  positionPanelNearPet,
+  setPanelSticky,
+  PANEL_MIN_HEIGHT,
+  PANEL_MAX_HEIGHT
+} from './windows/panel.js'
 import { createOsAdapter } from '../os/index.js'
 import { IPC, DEFAULT_MODEL_CONFIG, DEFAULT_SETTINGS } from '../shared/protocol.js'
 import type {
   AnswerQuestionRequest,
+  BenchRow,
   FrontWindow,
   LogEntry,
+  PreviousTurn,
   RuntimeToHost,
   Settings,
   StartTaskRequest
 } from '../shared/protocol.js'
-import { defaultLimits, emptyAuthorization, type PetState, type TaskState } from '../shared/types.js'
+import { isTerminal, defaultLimits, emptyAuthorization, type PetState, type TaskState } from '../shared/types.js'
 import { normalizePath } from '../runtime/authorization.js'
+import { claudeCodeAvailable } from '../runtime/model/claude-code-planner.js'
 
 const isDev = !app.isPackaged
 const RENDERER_URL = process.env.ELECTRON_RENDERER_URL ?? null
@@ -147,23 +157,36 @@ function newTask(req: StartTaskRequest): TaskState {
   }
 }
 
+/** Whether any planning route at all is configured. */
+function canWork(): boolean {
+  return secrets.hasApiKey() || secrets.hasJevKey() || (settings.useClaudeCode && claudeCodeAvailable())
+}
+
+/**
+ * How long a finished task stays available as context for the next message.
+ * Long enough that a follow-up lands in the same conversation, short enough
+ * that tomorrow's request is not coloured by yesterday's.
+ */
+const FOLLOW_UP_WINDOW_MS = 10 * 60 * 1000
+let lastFinished: { id: string; request: string; headline: string; at: number } | null = null
+
+function previousTurn(): PreviousTurn | null {
+  if (!lastFinished) return null
+  const elapsed = Date.now() - lastFinished.at
+  if (elapsed > FOLLOW_UP_WINDOW_MS) return null
+  return {
+    request: lastFinished.request,
+    headline: lastFinished.headline,
+    secondsAgo: Math.round(elapsed / 1000)
+  }
+}
+
 function startTask(req: StartTaskRequest): TaskState {
   // A missing Anthropic key is no longer fatal: the Jev-only workflows can
-  // still run, and the runtime reports clearly if a request needs the planner.
-  if (!secrets.hasApiKey() && !secrets.hasJevKey()) {
-    const task = newTask(req)
-    task.status = 'failed'
-    task.statusLine = 'No API key'
-    task.summary = {
-      headline: 'Add an Anthropic key, a TypeSafe (Jev) key, or both in Settings before running a task.',
-      evidence: [],
-      undoable: false
-    }
-    currentTask = task
-    broadcast(IPC.onTaskUpdate, task)
-    setPetState('failed')
-    return task
-  }
+  // still run, Claude Code can stand in for the planner, and the runtime
+  // reports clearly if a request needs something that is not configured.
+  const planViaClaudeCode = settings.useClaudeCode && claudeCodeAvailable()
+  if (currentTask && !isTerminal(currentTask.status)) throw new Error('A task is already running.')
 
   const task = newTask(req)
   ;(task as TaskState & { droppedPaths?: string[] }).droppedPaths = (req.droppedPaths ?? []).map(normalizePath)
@@ -175,14 +198,17 @@ function startTask(req: StartTaskRequest): TaskState {
     task,
     apiKey: secrets.getApiKey(),
     jevApiKey: secrets.getJevKey(),
-    model: DEFAULT_MODEL_CONFIG,
+    model: { ...DEFAULT_MODEL_CONFIG, claudeCode: settings.claudeCodeModel },
     frontWindow: req.includeFrontWindow ? lastFrontWindow : null,
     confirmEveryAction: settings.confirmEveryAction,
-    workflowsEnabled: settings.workflowsFirst
+    workflowsEnabled: settings.workflowsFirst,
+    useClaudeCode: planViaClaudeCode,
+    previousTurn: previousTurn()
   })
   if (!sent) {
     task.status = 'failed'
     task.summary = { headline: 'The task runtime is not running. Try again in a moment.', evidence: [], undoable: false }
+    store.saveTask(task)
     broadcast(IPC.onTaskUpdate, task)
   }
   return task
@@ -191,7 +217,11 @@ function startTask(req: StartTaskRequest): TaskState {
 function onRuntimeMessage(msg: RuntimeToHost): void {
   switch (msg.type) {
     case 'task-update': {
+      if (store.isDeleted(msg.task.id)) break
       currentTask = msg.task
+      if (msg.task.summary && ['succeeded', 'failed'].includes(msg.task.status)) {
+        lastFinished = { id: msg.task.id, request: msg.task.request, headline: msg.task.summary.headline, at: Date.now() }
+      }
       store.saveTask(msg.task)
       broadcast(IPC.onTaskUpdate, msg.task)
       // A task that is waiting on an answer must not wait invisibly: the panel
@@ -205,6 +235,7 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
       setPetState(msg.state)
       break
     case 'log': {
+      if (store.isDeleted(msg.entry.taskId)) break
       store.appendLog(msg.entry)
       broadcast(IPC.onLog, msg.entry)
       break
@@ -383,6 +414,24 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.taskGet, (_e, taskId: string) => store.getTask(taskId))
   ipcMain.handle(IPC.historyList, (_e, limit?: number) => store.listTasks(Math.min(limit ?? 25, 100)))
+  const forget = (ids: string[]): void => {
+    if (lastFinished && ids.includes(lastFinished.id)) lastFinished = null
+    if (currentTask && ids.includes(currentTask.id)) { currentTask = null; setPetState('idle') }
+    broadcast(IPC.onHistoryDeleted, ids)
+  }
+  ipcMain.handle(IPC.historyDelete, (_e, id: unknown) => {
+    if (typeof id !== 'string' || !id.trim()) throw new Error('A task ID is required.')
+    if (currentTask?.id === id && !isTerminal(currentTask.status)) throw new Error('Stop this task before deleting it.')
+    store.deleteTask(id)
+    forget([id])
+  })
+  ipcMain.handle(IPC.historyClear, () => { forget(store.clearHistory()) })
+  ipcMain.handle(IPC.choosePaths, async () => {
+    const result = await dialog.showOpenDialog(panelWindow!, { properties: ['openFile', 'openDirectory', 'multiSelections'], buttonLabel: 'Attach' })
+    return result.canceled ? [] : result.filePaths
+  })
+
+
 
   ipcMain.handle(IPC.permissionsGet, () => osAdapter.getPermissions())
   ipcMain.handle(IPC.permissionsRequest, (_e, p: string) => {
@@ -402,6 +451,34 @@ function registerIpc(): void {
     return secrets.setJevKey(key)
   })
   ipcMain.handle(IPC.secretsStatusJev, () => secrets.hasJevKey())
+  ipcMain.handle(IPC.claudeCodeStatus, () => claudeCodeAvailable())
+  // The same condition startTask enforces, so the interface can never nag for
+  // a key that is not actually needed.
+  ipcMain.handle(IPC.canWork, () => canWork())
+
+  // One measurement pass, answered by the runtime because that is where the
+  // Jev client and its key live. Nothing here ever sees the key itself.
+  ipcMain.handle(IPC.benchRun, async () => {
+    const rows = await new Promise<BenchRow[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        runtime.off('message', onMessage)
+        reject(new Error('the measurement did not finish in time'))
+      }, 60_000)
+      const onMessage = (msg: RuntimeToHost): void => {
+        if (msg.type !== 'bench-result') return
+        clearTimeout(timer)
+        runtime.off('message', onMessage)
+        resolve(msg.rows)
+      }
+      runtime.on('message', onMessage)
+      if (!runtime.send({ type: 'bench', jevApiKey: secrets.getJevKey(), model: DEFAULT_MODEL_CONFIG })) {
+        clearTimeout(timer)
+        runtime.off('message', onMessage)
+        reject(new Error('the task runtime is not running'))
+      }
+    })
+    return rows
+  })
 
   ipcMain.handle(IPC.settingsGet, () => settings)
   ipcMain.handle(IPC.settingsSet, (_e, next: Partial<Settings>) => {
@@ -420,7 +497,12 @@ function registerIpc(): void {
   ipcMain.handle(IPC.openPath, async (_e, p: string) => {
     const path = normalizePath(String(p))
     if (!existsSync(path)) throw new Error('that path no longer exists')
-    await shell.openPath(path)
+    const error = await shell.openPath(path)
+    if (error) throw new Error(error)
+  })
+
+  ipcMain.handle(IPC.openUrl, async (_e, url: unknown) => {
+    await shell.openExternal(externalWebUrl(url))
   })
 
   ipcMain.handle(IPC.panelResize, (_e, height: number) => {
@@ -431,7 +513,9 @@ function registerIpc(): void {
     if (petWindow) positionPanelNearPet(panelWindow, petWindow)
   })
   ipcMain.handle(IPC.panelClose, () => panelWindow?.hide())
+  ipcMain.handle(IPC.panelSticky, (_e, value: unknown) => setPanelSticky(!!value))
   ipcMain.handle(IPC.petClicked, () => togglePanel(true))
+  ipcMain.handle(IPC.petInteractive, (_e, v: unknown) => setPetInteractive(petWindow, !!v))
 
   ipcMain.handle(IPC.petDrag, (_e, delta: { dx: number; dy: number }) => {
     if (!petWindow || petWindow.isDestroyed()) return

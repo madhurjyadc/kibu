@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
+import { isTerminal } from '../../shared/types.js'
 import type { ActionRecord, TaskState, UndoEntry } from '../../shared/types.js'
 import type { LogEntry, TaskSummaryRow } from '../../shared/protocol.js'
 
@@ -10,12 +11,14 @@ import type { LogEntry, TaskSummaryRow } from '../../shared/protocol.js'
  */
 export class Store {
   private db: DatabaseSync
+  private deletedTasks = new Set<string>()
 
   constructor(userDataDir: string) {
     mkdirSync(userDataDir, { recursive: true })
     this.db = new DatabaseSync(join(userDataDir, 'kibu.db'))
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA foreign_keys = ON')
+    this.db.exec('PRAGMA secure_delete = ON')
     this.migrate()
   }
 
@@ -63,6 +66,7 @@ export class Store {
   }
 
   saveTask(task: TaskState): void {
+    if (this.deletedTasks.has(task.id)) return
     this.db
       .prepare(
         `INSERT INTO tasks (id, request, status, headline, created_at, updated_at, state_json)
@@ -118,6 +122,30 @@ export class Store {
     return row ? (JSON.parse(row.state_json) as TaskState) : null
   }
 
+  isDeleted(id: string): boolean { return this.deletedTasks.has(id) }
+
+  /** Remove task data, logs, and undo records. Never operate on user files. */
+  deleteTask(id: string): void {
+    const task = this.getTask(id)
+    if (task && !isTerminal(task.status)) throw new Error('Stop this task before deleting it.')
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      this.db.prepare('DELETE FROM logs WHERE task_id = ?').run(id)
+      this.db.prepare('DELETE FROM tasks WHERE id = ?').run(id)
+      this.db.exec('COMMIT')
+      this.deletedTasks.add(id)
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  clearHistory(): string[] {
+    const rows = this.db.prepare("SELECT id FROM tasks WHERE status IN ('succeeded', 'failed', 'cancelled')").all() as { id: string }[]
+    for (const row of rows) this.deleteTask(row.id)
+    return rows.map((r) => r.id)
+  }
+
   listTasks(limit = 25): TaskSummaryRow[] {
     const rows = this.db
       .prepare(
@@ -160,6 +188,7 @@ export class Store {
   }
 
   appendLog(entry: LogEntry): void {
+    if (this.deletedTasks.has(entry.taskId)) return
     this.db
       .prepare('INSERT INTO logs (task_id, at, level, source, message, data_json) VALUES (?, ?, ?, ?, ?, ?)')
       .run(

@@ -2,9 +2,10 @@ import { choice } from '../model/jev.js'
 import { organizeWorkflow } from './organize.js'
 import { findWorkflow } from './find.js'
 import { renameWorkflow } from './rename.js'
+import { commandWorkflow } from './command.js'
 import type { Workflow, WorkflowContext } from './types.js'
 
-export const WORKFLOWS: Workflow[] = [organizeWorkflow, findWorkflow, renameWorkflow]
+export const WORKFLOWS: Workflow[] = [organizeWorkflow, findWorkflow, renameWorkflow, commandWorkflow]
 
 export interface WorkflowMatch {
   workflow: Workflow
@@ -23,9 +24,23 @@ export interface WorkflowMatch {
 export async function routeToWorkflow(
   request: string,
   droppedPaths: string[],
-  ctx: Pick<WorkflowContext, 'ask' | 'log'>
+  ctx: Pick<WorkflowContext, 'ask' | 'log'>,
+  /** What the router decided this request is about. */
+  route: string
 ): Promise<WorkflowMatch | null> {
-  const plausible = WORKFLOWS.filter((w) => w.plausible(request, droppedPaths))
+  // Keyword matching alone may not claim a request. Each workflow declares
+  // the routes it belongs to, and the route — local rules, or Jev when they
+  // are unsure — decides what kind of work this is. That gate is why "open
+  // youtube and search for a good video" no longer searches the Downloads
+  // folder for a video file.
+  const effective = route === 'unclear' && droppedPaths.length > 0 ? 'files' : route
+  const plausible = WORKFLOWS.filter(
+    (w) => w.routes.includes(effective) && w.plausible(request, droppedPaths)
+  )
+  if (plausible.length === 0) {
+    ctx.log('info', `nothing matches a "${effective}" request; handing to the planner`)
+    return null
+  }
   if (plausible.length === 0) return null
   if (plausible.length === 1) {
     return { workflow: plausible[0]!, confidence: 0.8, reason: 'the request matches one known workflow' }

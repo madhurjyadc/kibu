@@ -3,6 +3,8 @@ import type { ZodType } from 'zod'
 import { Planner, addCost, type PlannerLike } from '../model/planner.js'
 import { Jev, summarizeJev } from '../model/jev.js'
 import { routeToWorkflow, type WorkflowContext } from '../workflows/index.js'
+import { describeSelf, isAboutKibu } from './about.js'
+import { evaluateArithmetic } from './calculate.js'
 import { basename } from 'node:path'
 import { checkScopes, describeMissing, extendAuthorization, grantFor, normalizePath } from '../authorization.js'
 import { clearElementCache } from '../tools/desktop.js'
@@ -19,7 +21,7 @@ import type {
   UserQuestion,
   VerificationResult
 } from '../../shared/types.js'
-import type { AnswerPayload, FrontWindow, LogEntry, ModelConfig } from '../../shared/protocol.js'
+import type { AnswerPayload, FrontWindow, LogEntry, ModelConfig, PreviousTurn } from '../../shared/protocol.js'
 
 export class CancelledError extends Error {
   constructor() {
@@ -57,6 +59,8 @@ export interface RunnerDeps {
   workflowsEnabled: boolean
   droppedPaths: string[]
   frontWindow: FrontWindow | null
+  /** The exchange just before this one, when there was a recent one. */
+  previousTurn: PreviousTurn | null
   confirmEveryAction: boolean
   /** Overrides the planning model. Used to swap providers, and by tests. */
   createPlanner?: () => PlannerLike
@@ -66,11 +70,11 @@ export interface RunnerDeps {
 
 /** Which tool capabilities each route unlocks. Tool availability is scoped. */
 const ROUTE_CAPABILITIES: Record<string, string[]> = {
-  files: ['files', 'user.interact'],
-  desktop: ['files.read', 'desktop', 'user.interact'],
+  files: ['files', 'shell', 'user.interact'],
+  desktop: ['files.read', 'shell', 'desktop', 'user.interact'],
   browser: ['files.read', 'browser', 'user.interact'],
-  mixed: ['files', 'desktop', 'browser', 'user.interact'],
-  unclear: ['files', 'desktop', 'browser', 'user.interact']
+  mixed: ['files', 'shell', 'desktop', 'browser', 'user.interact'],
+  unclear: ['files', 'shell', 'desktop', 'browser', 'user.interact']
 }
 
 export class TaskRunner {
@@ -166,6 +170,19 @@ export class TaskRunner {
 
   async run(): Promise<TaskState> {
     try {
+      // Arithmetic is not a task. It is answered exactly, instantly, by code.
+      const value = evaluateArithmetic(this.task.request)
+      if (value !== null) {
+        this.answerArithmetic(value)
+        return this.task
+      }
+      // "What can you do?" is a question about this build, not a task. It is
+      // answered from the tool registry and the real permission state, in no
+      // time and at no cost, rather than by asking a model to describe itself.
+      if (isAboutKibu(this.task.request)) {
+        this.answerAboutSelf()
+        return this.task
+      }
       await this.understand()
       // A known task shape is handled by code plus Jev, with no planning
       // model involved at all. Only novel requests reach the planner.
@@ -193,12 +210,62 @@ export class TaskRunner {
         this.log('error', 'loop', message)
       }
     } finally {
+      await this.tidyBrowser()
       this.dropDesktop()
       clearElementCache(this.task.id)
       this.log('info', 'jev', summarizeJev(this.jev.metrics), this.jev.metrics)
       this.emit()
     }
     return this.task
+  }
+
+  /**
+   * Shuts the browser when the job it was opened for is over.
+   *
+   * Leaving a Chromium window sitting on the desktop after every web task is
+   * litter. Local rules decide the clear cases — the user asking to *open*
+   * something wants it left open; a task that failed leaves it up so they can
+   * see where it got to — and Jev is asked only in the ambiguous middle,
+   * choosing between two outcomes this code has already defined.
+   */
+  private async tidyBrowser(): Promise<void> {
+    if (!this.deps.browser.isOpen()) return
+    const request = this.task.request.toLowerCase()
+
+    // They asked for a window; leave them the window.
+    if (/\b(open|show|leave|keep|pull up|bring up|log ?in|sign ?in)\b/.test(request)) return
+    // It did not finish: the half-done page is the evidence.
+    if (this.task.status !== 'succeeded') return
+
+    const verdict = await this.jev.shouldCloseBrowser(this.task.request)
+    if (!verdict) return
+    try {
+      await this.deps.browser.close()
+      this.log('info', 'browser', 'closed the browser now the task is done')
+    } catch (err) {
+      // Failing to tidy up must never fail the task.
+      this.log('warn', 'browser', `could not close the browser: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  /** Answers a sum in place, with no routing, no workflow and no model. */
+  private answerArithmetic(value: number): void {
+    this.setStatus('succeeded', 'Worked it out')
+    this.hooks.onPetState('finished')
+    this.task.summary = { headline: `${this.task.request.trim()} = ${value}`, evidence: [], undoable: false }
+    this.log('info', 'loop', `answered arithmetic locally: ${value}`)
+    this.emit()
+  }
+
+  /** Answers a question about Kibu itself, with no model call at all. */
+  private answerAboutSelf(): void {
+    const self = describeSelf(this.deps.os, this.canPlan(), this.deps.workflowsEnabled)
+    this.evidence = self.evidence
+    this.setStatus('succeeded', 'Said hello')
+    this.hooks.onPetState('finished')
+    this.task.summary = { headline: self.headline, evidence: self.evidence, undoable: false }
+    this.log('info', 'loop', 'answered a question about Kibu locally; no model call')
+    this.emit()
   }
 
   /** Step 1: understand the request well enough to scope the toolset. */
@@ -208,7 +275,11 @@ export class TaskRunner {
     const route = await this.jev.routeRequest(this.task.request, this.deps.droppedPaths.length > 0)
     this.log('info', 'jev', `routed to "${route.route}" (${route.reason})`, route)
 
-    if (route.needsClarification) {
+    // A short follow-up after a recent exchange is a continuation, not a
+    // vague request. Asking "what do you mean?" when the user just told you
+    // is the single most annoying thing this loop can do.
+    const following = this.deps.previousTurn !== null
+    if (route.needsClarification && !following) {
       const answer = await this.ask({
         reason: 'ambiguous',
         prompt: `I want to get this right — what would you like me to do?\n\nYou asked: "${this.task.request}"`,
@@ -222,7 +293,21 @@ export class TaskRunner {
     if (this.deps.frontWindow) await this.observeFrontWindow(this.deps.frontWindow)
 
     this.task.outcome = this.task.request
-    if (this.canPlan()) this.planner.seed(this.task, this.deps.droppedPaths)
+    if (this.canPlan()) {
+      this.planner.seed(this.task, this.deps.droppedPaths)
+      const prev = this.deps.previousTurn
+      if (prev) {
+        this.planner.addNote(
+          `${prev.secondsAgo}s ago the user asked: "${prev.request}". You answered: "${prev.headline}". ` +
+            `This message is very likely a follow-up to that. Read it that way before considering it vague, ` +
+            `and do not ask them to repeat something they have already told you.`
+        )
+      }
+      const missing = this.missingCapabilities()
+      // Told up front, so it says what it needs instead of calling a tool that
+      // is going to fail and guessing from the wreckage.
+      if (missing) this.planner.addNote(missing)
+    }
     ;(this.task as TaskState & { route?: string }).route = route.route
   }
 
@@ -281,7 +366,8 @@ export class TaskRunner {
     if (!this.deps.workflowsEnabled) return false
 
     const wfCtx = this.workflowContext()
-    const match = await routeToWorkflow(this.task.request, this.deps.droppedPaths, wfCtx)
+    const route = (this.task as TaskState & { route?: string }).route ?? 'unclear'
+    const match = await routeToWorkflow(this.task.request, this.deps.droppedPaths, wfCtx, route)
     if (!match) return false
 
     this.log('info', 'workflow', `running "${match.workflow.id}" — ${match.reason}`)
@@ -320,6 +406,27 @@ export class TaskRunner {
       ...(result.unresolved ? { unresolved: result.unresolved } : {})
     })
     return true
+  }
+
+  /**
+   * What this Mac will not let Kibu do, and what the user would have to grant.
+   * Permission gaps are a fact about the machine, not a tool failure, so the
+   * planner is told before it plans rather than after it trips over one.
+   */
+  private missingCapabilities(): string | null {
+    const gaps: string[] = []
+    if (!this.deps.os.supports('window.inspect')) {
+      gaps.push(
+        'You cannot read or control other applications, and you cannot see what is on screen: macOS ' +
+          'Accessibility permission has not been granted to Kibu. Any request that depends on seeing or ' +
+          'driving another app must be answered by saying exactly that, and telling the user they can grant ' +
+          'it under /tune. Do not attempt desktop tools, and never guess what a window contains.'
+      )
+    }
+    if (!this.deps.os.supports('window.capture')) {
+      gaps.push('You cannot take pictures of windows: Screen Recording permission has not been granted.')
+    }
+    return gaps.length ? gaps.join(' ') : null
   }
 
   /** True when a planning model could actually be constructed. */

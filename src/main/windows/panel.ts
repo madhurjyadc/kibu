@@ -1,9 +1,10 @@
 import { BrowserWindow, screen } from 'electron'
 import { PET_HEIGHT, PET_WIDTH } from './pet.js'
 
-const PANEL_WIDTH = 400
-const PANEL_MIN_HEIGHT = 220
-const PANEL_MAX_HEIGHT = 620
+const PANEL_WIDTH = 620
+/** A compact workspace with independently scrolling content. */
+const PANEL_MIN_HEIGHT = 360
+const PANEL_MAX_HEIGHT = 660
 
 export interface PanelWindowDeps {
   preload: string
@@ -11,12 +12,19 @@ export interface PanelWindowDeps {
   rendererFile: string
 }
 
-/** The compact task panel. Unlike the pet, this one does take focus: the
- *  user types into it. */
+/** The companion workspace takes focus while the pet remains on the desktop.
+ * The renderer provides navigation, a scrolling workspace, and a pinned composer. */
+/** Whether the panel currently has something worth keeping on screen. */
+let sticky = false
+
+export function setPanelSticky(value: boolean): void {
+  sticky = value
+}
+
 export function createPanelWindow(deps: PanelWindowDeps): BrowserWindow {
   const win = new BrowserWindow({
     width: PANEL_WIDTH,
-    height: 320,
+    height: Math.min(440, screen.getPrimaryDisplay().workArea.height - 48),
     minHeight: PANEL_MIN_HEIGHT,
     maxHeight: PANEL_MAX_HEIGHT,
     frame: false,
@@ -42,31 +50,46 @@ export function createPanelWindow(deps: PanelWindowDeps): BrowserWindow {
   if (deps.rendererUrl) void win.loadURL(`${deps.rendererUrl}#panel`)
   else void win.loadFile(deps.rendererFile, { hash: 'panel' })
 
-  // Dismiss on click-away, the way a menu bar popover behaves.
+  // Dismiss on click-away only when there is nothing to lose.
+  //
+  // A popover that vanishes the instant you click elsewhere is unusable for
+  // anything that takes time: you cannot read a result, follow a link, or
+  // watch it work without destroying it. So it holds its ground whenever it
+  // has something to show — a running task, a question, a result, an open
+  // pane — and behaves like a launcher only when it is empty.
   win.on('blur', () => {
-    if (!win.isDestroyed() && win.isVisible()) win.hide()
+    if (win.isDestroyed() || !win.isVisible()) return
+    if (sticky) return
+    win.hide()
   })
 
   return win
 }
 
-/** Places the panel beside the pet, kept inside the display's work area. */
+/**
+ * Centres the panel in the upper third of whichever display the pet is on.
+ *
+ * It used to hang off the pet's head, which pinned it into a screen corner and
+ * forced it narrow. A summoned surface belongs where the eyes already are: the
+ * pet stays a desktop creature you click, and what it opens is centre stage.
+ */
 export function positionPanelNearPet(panel: BrowserWindow, pet: BrowserWindow): void {
   const petBounds = pet.getBounds()
-  const display = screen.getDisplayNearestPoint({ x: petBounds.x, y: petBounds.y })
+  const display = screen.getDisplayNearestPoint({
+    x: petBounds.x + PET_WIDTH / 2,
+    y: petBounds.y + PET_HEIGHT / 2
+  })
   const area = display.workArea
-  const panelBounds = panel.getBounds()
+  const { width, height } = panel.getBounds()
 
-  // Prefer the left of the pet; flip to the right when there is no room.
-  let x = petBounds.x - panelBounds.width - 12
-  if (x < area.x + 8) x = petBounds.x + PET_WIDTH + 12
-  x = Math.min(x, area.x + area.width - panelBounds.width - 8)
-  x = Math.max(x, area.x + 8)
+  const x = area.x + Math.round((area.width - width) / 2)
+  // A fifth of the way down: the classic summoned-surface placement, and it
+  // leaves room for the panel to grow downwards without ever being re-anchored.
+  let y = area.y + Math.round(area.height * 0.2)
+  y = Math.min(y, area.y + area.height - height - 24)
+  y = Math.max(y, area.y + 24)
 
-  let y = petBounds.y + PET_HEIGHT / 2 - panelBounds.height / 2
-  y = Math.max(area.y + 8, Math.min(y, area.y + area.height - panelBounds.height - 8))
-
-  panel.setPosition(Math.round(x), Math.round(y), false)
+  panel.setPosition(x, Math.round(y), false)
 }
 
 export { PANEL_WIDTH, PANEL_MIN_HEIGHT, PANEL_MAX_HEIGHT }

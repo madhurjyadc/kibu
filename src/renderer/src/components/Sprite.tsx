@@ -1,86 +1,59 @@
+import { useId } from 'react'
 import type { PetState } from '../../../shared/protocol.js'
 
-/**
- * Placeholder artwork, driven by real runtime state.
- *
- * Every visual difference here corresponds to an actual state the task
- * runtime reports — nothing loops decoratively while the assistant is idle,
- * and 'working' cannot appear unless a tool is genuinely executing.
- */
-const EYES: Record<PetState, { rx: number; ry: number; dy: number }> = {
-  idle: { rx: 5, ry: 5, dy: 0 },
-  listening: { rx: 6, ry: 6.5, dy: -1 },
-  thinking: { rx: 5, ry: 3, dy: -2 },
-  working: { rx: 4.5, ry: 5, dy: 0 },
-  waiting: { rx: 6, ry: 6, dy: 0 },
-  finished: { rx: 5.5, ry: 2, dy: -1 },
-  failed: { rx: 4, ry: 4, dy: 2 }
+export interface Look { x: number; y: number }
+const LIGHT: Record<PetState, string> = {
+  idle: '#a3fff0', listening: '#bafcff', thinking: '#c1acff', working: '#9affe0',
+  waiting: '#f3d7a0', finished: '#a2ffd2', failed: '#ffaaa9'
 }
 
-const TINT: Record<PetState, string> = {
-  idle: '#8ab4ff',
-  listening: '#7ee0c8',
-  thinking: '#b79bff',
-  working: '#ffc46b',
-  waiting: '#ffd966',
-  finished: '#6ddf8e',
-  failed: '#ff8a8a'
-}
-
-export function Sprite({ state }: { state: PetState }): React.JSX.Element {
-  const eyes = EYES[state]
-  const tint = TINT[state]
-
+/** A floating ceramic capsule. Expression and accent light follow real runtime state. */
+export function Sprite({ state, size = 116, look, quiet = false }: {
+  state: PetState; size?: number; look?: Look; quiet?: boolean
+}): React.JSX.Element {
+  const uid = useId().replace(/:/g, '')
+  const light = LIGHT[state]
+  const eyeHeight = state === 'thinking' ? 3.5 : state === 'failed' ? 5 : 8
   return (
-    <svg className={`sprite state-${state}`} viewBox="0 0 120 130" width="120" height="130" role="img" aria-label={`Kibu is ${state}`}>
+    <svg className={`kb-sprite is-${state} ${quiet ? 'is-quiet' : ''}`} viewBox="0 0 120 124"
+      width={size} height={size * 124 / 120} role="img" aria-label={`Kibu is ${state}`}>
       <defs>
-        <radialGradient id="body" cx="42%" cy="34%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
-          <stop offset="55%" stopColor={tint} stopOpacity="0.95" />
-          <stop offset="100%" stopColor={tint} stopOpacity="0.72" />
-        </radialGradient>
-        <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="5" result="b" />
-          <feMerge>
-            <feMergeNode in="b" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
+        <linearGradient id={`${uid}-shell`} x1="0" y1="0" x2="1" y2="1">
+          <stop stopColor="#f0f8ff" /><stop offset=".32" stopColor="#b9c7d7" />
+          <stop offset=".68" stopColor="#6c7d96" /><stop offset="1" stopColor="#d9c7f7" />
+        </linearGradient>
+        <linearGradient id={`${uid}-visor`} x1="0" y1="0" x2="0" y2="1">
+          <stop stopColor="#242c40" /><stop offset="1" stopColor="#0a101b" />
+        </linearGradient>
+        <radialGradient id={`${uid}-aura`}><stop stopColor={light} stopOpacity=".25" /><stop offset="1" stopColor={light} stopOpacity="0" /></radialGradient>
+        <filter id={`${uid}-glow`} x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="2" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
       </defs>
-
-      <ellipse className="shadow" cx="60" cy="118" rx="28" ry="6" fill="rgba(0,0,0,.22)" />
-
-      <g className="body-group">
-        <path
-          className="body"
-          d="M60 16c24 0 40 19 40 44 0 26-17 44-40 44S20 86 20 60c0-25 16-44 40-44z"
-          fill="url(#body)"
-          filter="url(#soft)"
-        />
-        <ellipse className="eye left" cx="46" cy={58 + eyes.dy} rx={eyes.rx} ry={eyes.ry} fill="#20222c" />
-        <ellipse className="eye right" cx="74" cy={58 + eyes.dy} rx={eyes.rx} ry={eyes.ry} fill="#20222c" />
-        {state === 'finished' ? (
-          <path className="mouth" d="M50 76q10 9 20 0" stroke="#20222c" strokeWidth="3" fill="none" strokeLinecap="round" />
-        ) : state === 'failed' ? (
-          <path className="mouth" d="M50 80q10 -8 20 0" stroke="#20222c" strokeWidth="3" fill="none" strokeLinecap="round" />
-        ) : (
-          <path className="mouth" d="M53 76q7 5 14 0" stroke="#20222c" strokeWidth="2.5" fill="none" strokeLinecap="round" />
-        )}
+      {!quiet && <>
+        <ellipse className="kb-aura" cx="60" cy="65" rx="58" ry="54" fill={`url(#${uid}-aura)`} />
+        <ellipse className="kb-pool" cx="60" cy="113" rx="25" ry="3" fill={light} opacity=".2" />
+        <ellipse className="kb-halo" cx="60" cy="68" rx="54" ry="19" fill="none" stroke={light} strokeWidth=".7" opacity=".4" transform="rotate(-18 60 68)" />
+      </>}
+      <g className="kb-body-group">
+        <path d="M24 64 15 68q-5 3-1 9l10 8" fill={`url(#${uid}-shell)`} stroke="#e1e9f9" strokeOpacity=".35" />
+        <path d="m96 64 9 4q5 3 1 9l-10 8" fill={`url(#${uid}-shell)`} stroke="#e1e9f9" strokeOpacity=".35" />
+        <rect className="kb-shell" x="21" y="30" width="78" height="66" rx="29" fill={`url(#${uid}-shell)`} stroke="#eaf5ff" strokeOpacity=".65" />
+        <path d="M32 47q7-13 23-13h13" fill="none" stroke="white" strokeOpacity=".55" strokeWidth="2" strokeLinecap="round" />
+        <path d="M60 30v-8" stroke="#b9cadb" strokeWidth="2" />
+        <ellipse className="kb-antenna" cx="60" cy="20" rx="5" ry="3" fill={light} filter={`url(#${uid}-glow)`} />
+        <rect x="29" y="45" width="62" height="38" rx="17" fill={`url(#${uid}-visor)`} stroke="#52647e" strokeWidth="1" />
+        <path d="M40 49h28" stroke="#bbcfff" strokeOpacity=".14" strokeWidth="2" strokeLinecap="round" />
+        <g className="kb-face" transform={`translate(${(look?.x ?? 0) * 2.5} ${(look?.y ?? 0) * 2})`} fill={light}>
+          {state === 'finished' ? <g fill="none" stroke={light} strokeWidth="3" strokeLinecap="round" filter={`url(#${uid}-glow)`}><path d="M40 63q5-7 10 0M70 63q5-7 10 0" /></g> : <g filter={`url(#${uid}-glow)`}>
+            <rect className="kb-eye" x="42" y={62-eyeHeight/2} width="6" height={eyeHeight} rx="3" />
+            <rect className="kb-eye" x="72" y={62-eyeHeight/2} width="6" height={eyeHeight} rx="3" />
+          </g>}
+          <path d={state === 'failed' ? 'M56 73q4-4 8 0' : 'M56 70q4 4 8 0'} fill="none" stroke={light} strokeWidth="1.5" strokeLinecap="round" />
+          <ellipse cx="38" cy="70" rx="3" ry="1" opacity=".3" /><ellipse cx="82" cy="70" rx="3" ry="1" opacity=".3" />
+        </g>
+        <rect x="53" y="88" width="14" height="2" rx="1" fill={light} opacity=".8" />
       </g>
-
-      {state === 'thinking' && (
-        <g className="think-dots">
-          <circle cx="96" cy="30" r="3" />
-          <circle cx="104" cy="22" r="2.2" />
-          <circle cx="110" cy="16" r="1.6" />
-        </g>
-      )}
-      {state === 'working' && (
-        <g className="work-ring">
-          <circle cx="60" cy="60" r="50" fill="none" stroke={tint} strokeWidth="2.5" strokeDasharray="14 10" opacity="0.7" />
-        </g>
-      )}
-      {state === 'waiting' && <circle className="waiting-pulse" cx="60" cy="60" r="52" fill="none" stroke={tint} strokeWidth="2" />}
     </svg>
   )
 }

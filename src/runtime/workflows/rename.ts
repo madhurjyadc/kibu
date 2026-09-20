@@ -52,6 +52,7 @@ function slug(value: string, separator: string): string {
 export const renameWorkflow: Workflow = {
   id: 'rename_batch',
   description: 'Rename a group of files so they follow one consistent naming pattern.',
+  routes: ['files'],
 
   plausible(request) {
     return /\b(rename|renaming|consistent|naming|name these|tidy up the names)\b/i.test(request)

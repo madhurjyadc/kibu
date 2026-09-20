@@ -9,10 +9,13 @@
 import { join } from 'node:path'
 import { ToolRegistry } from './tools/registry.js'
 import { fileTools } from './tools/files.js'
+import { shellTools } from './tools/shell.js'
 import { userTools } from './tools/user.js'
 import { desktopTools } from './tools/desktop.js'
 import { browserTools, ManagedBrowser } from './tools/browser.js'
 import { TaskRunner } from './loop/task-runner.js'
+import { ClaudeCodePlanner } from './model/claude-code-planner.js'
+import { runBench } from './bench.js'
 import { createOsAdapter } from '../os/index.js'
 import type { HostToRuntime, LogEntry, RuntimeToHost } from '../shared/protocol.js'
 import type { PetState, TaskState } from '../shared/types.js'
@@ -31,7 +34,7 @@ const browser = new ManagedBrowser(profileDir, downloadDir, (level, message) =>
 )
 
 const registry = new ToolRegistry()
-registry.registerAll([...fileTools, ...userTools, ...desktopTools, ...browserTools])
+registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools])
 
 let runner: TaskRunner | null = null
 
@@ -67,8 +70,12 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
       jevEnabled: process.env.KIBU_JEV !== '0',
       jevApiKey: msg.jevApiKey,
       workflowsEnabled: msg.workflowsEnabled,
+      ...(msg.useClaudeCode
+        ? { createPlanner: (): ClaudeCodePlanner => new ClaudeCodePlanner({ model: msg.model.claudeCode }) }
+        : {}),
       frontWindow: msg.frontWindow,
       confirmEveryAction: msg.confirmEveryAction,
+      previousTurn: msg.previousTurn,
       droppedPaths
     },
     {
@@ -98,6 +105,13 @@ process.on('message', (raw: HostToRuntime) => {
       break
     case 'answer':
       runner?.answer(raw.answer)
+      break
+    case 'bench':
+      void runBench(raw.jevApiKey, raw.model)
+        .then((rows) => send({ type: 'bench-result', rows }))
+        .catch((err: unknown) =>
+          send({ type: 'error', message: `bench failed: ${err instanceof Error ? err.message : String(err)}`, fatal: false })
+        )
       break
     case 'shutdown':
       void shutdown()

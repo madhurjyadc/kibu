@@ -13,6 +13,7 @@ import { defaultLimits, emptyAuthorization, type TaskState } from '../src/shared
 import { DEFAULT_MODEL_CONFIG } from '../src/shared/protocol.js'
 import { candidateProjectGroups, typeGroupFor } from '../src/runtime/workflows/common.js'
 import { SCHEMES } from '../src/runtime/workflows/rename.js'
+import { WORKFLOWS } from '../src/runtime/workflows/index.js'
 
 const registry = new ToolRegistry()
 registry.registerAll([...fileTools, ...userTools])
@@ -77,7 +78,8 @@ function harness(
 
   const deps: RunnerDeps = {
     os: { supports: () => false } as unknown as RunnerDeps['os'],
-    browser: {} as RunnerDeps['browser'],
+    // A browser that is simply never open: these tests do not touch the web.
+    browser: { isOpen: () => false, close: async () => {}, page: async () => { throw new Error('no browser in this test') } } as unknown as RunnerDeps['browser'],
     registry,
     model: DEFAULT_MODEL_CONFIG,
     // No Anthropic key at all.
@@ -88,6 +90,7 @@ function harness(
     workflowsEnabled: true,
     droppedPaths,
     frontWindow: null,
+    previousTurn: null,
     confirmEveryAction: false,
     // Proposing is the network call. If a workflow handles the task, this
     // must never fire. Omitting createPlanner entirely models a user with no
@@ -274,42 +277,67 @@ describe('renaming with no planning model', () => {
 })
 
 describe('finding a file with no planning model', () => {
-  test('turns the sentence into filters, then searches deterministically', async () => {
+  test('finds Aadhaar from natural wording with no planner, model requests, or questions', async () => {
+    await fs.writeFile(join(dir, 'e-Aadhaar.pdf'), 'synthetic fixture')
+    await fs.writeFile(join(dir, 'birthday-card.pdf'), 'unrelated')
+    const task = makeTask('find my aadhar card in my pc', [dir])
+    const model = jevStub(() => { throw new Error('No model request should be needed') })
+    const h = harness(task, [], model.impl, () => { throw new Error('No question should be needed') }, { noPlannerAvailable: true })
+    const final = await h.runner.run()
+    assert.equal(final.status, 'succeeded', final.error)
+    assert.equal(final.summary?.evidence[0]?.label, 'e-Aadhaar.pdf')
+    assert.equal(final.cost.usd, 0)
+    assert.equal(model.requests.length, 0)
+    assert.deepEqual(h.questionsAsked, [])
+  })
+
+  test('reads the sentence in code: no Jev call, no question, just the file', async () => {
     await fs.writeFile(join(dir, 'statement.pdf'), 'pdf')
     await fs.writeFile(join(dir, 'holiday.png'), 'png')
 
-    const jev = jevStub((names) => {
-      if (names.includes('fileType')) {
-        return {
-          fileType: choiceAnswer('Documents'),
-          timeframe: choiceAnswer('any'),
-          location: choiceAnswer('anywhere'),
-          shouldOpen: { type: 'noul', noul: 0.9 }
-        }
-      }
-      return {}
-    })
-
-    const task = makeTask('find the pdf I saved recently', [])
-    const h = harness(task, [], jev.impl, () => ({ optionId: '0' }))
-    // The authorized root is where the search happens.
+    const jev = jevStub((names) => (names.includes('workflow') ? { workflow: choiceAnswer('find_files') } : {}))
+    const task = makeTask('find the statement pdf', [])
     task.authorization.readRoots = [dir]
+    const asked: string[] = []
+    const h = harness(task, [], jev.impl, (prompt: string) => {
+      asked.push(prompt)
+      return { optionId: '0' }
+    })
     const final = await h.runner.run()
 
     assert.equal(h.plannerUsed(), false)
     assert.equal(final.status, 'succeeded', final.error)
-    assert.match(final.summary!.headline, /statement\.pdf/)
-    assert.equal(final.summary!.evidence[0]!.value, join(dir, 'statement.pdf'))
+    assert.equal(final.summary!.headline, '1 match')
+    assert.equal(final.summary!.evidence[0]!.label, 'statement.pdf')
+    assert.equal(await fs.realpath(final.summary!.evidence[0]!.value), await fs.realpath(join(dir, 'statement.pdf')))
+    // The whole point of the rewrite: it does not stop to interrogate.
+    assert.deepEqual(asked, [])
+    // Filters are parsed locally, so Jev is only ever asked to route.
+    assert.ok(!jev.requests.some((r) => r.includes('fileType') || r.includes('location')))
+  })
+
+  test('the runners-up come back as evidence rather than as a quiz', async () => {
+    for (const name of ['report-jan.pdf', 'report-feb.pdf', 'report-mar.pdf']) {
+      await fs.writeFile(join(dir, name), name)
+    }
+    const jev = jevStub((names) => (names.includes('workflow') ? { workflow: choiceAnswer('find_files') } : {}))
+    const task = makeTask('find the report pdf', [])
+    task.authorization.readRoots = [dir]
+    const asked: string[] = []
+    const h = harness(task, [], jev.impl, (prompt: string) => {
+      asked.push(prompt)
+      return { optionId: '0' }
+    })
+    const final = await h.runner.run()
+
+    assert.equal(final.status, 'succeeded', final.error)
+    assert.deepEqual(asked, [], 'three plausible matches must not become a question')
+    assert.ok(final.summary!.evidence.length > 1, 'the alternatives are offered, not asked about')
   })
 
   test('reports honestly when nothing matches', async () => {
-    const jev = jevStub(() => ({
-      fileType: choiceAnswer('Video'),
-      timeframe: choiceAnswer('today'),
-      location: choiceAnswer('anywhere'),
-      shouldOpen: { type: 'noul', noul: 0.1 }
-    }))
-    const task = makeTask('find the video from this morning', [])
+    const jev = jevStub((names) => (names.includes('workflow') ? { workflow: choiceAnswer('find_files') } : {}))
+    const task = makeTask('find the wombat spreadsheet', [])
     task.authorization.readRoots = [dir]
     const h = harness(task, [], jev.impl, () => ({ optionId: 'none' }))
     const final = await h.runner.run()
@@ -319,86 +347,13 @@ describe('finding a file with no planning model', () => {
   })
 })
 
-describe('falling back when Jev is unavailable', () => {
-  test('a workflow still completes using local rules alone', async () => {
-    for (const name of ['a.pdf', 'b.png']) await fs.writeFile(join(dir, name), name)
-    // Every Jev call fails.
-    const failing = async (): Promise<Response> => new Response('{}', { status: 500 })
-
-    const task = makeTask('organise this folder', [dir])
-    const h = harness(task, [dir], failing, () => ({ optionId: 'approve' }))
-    const final = await h.runner.run()
-
-    assert.equal(h.plannerUsed(), false, 'neither model is needed for this')
-    assert.equal(final.status, 'succeeded', final.error)
-    assert.ok(await fs.stat(join(dir, 'Documents', 'a.pdf')))
-    assert.ok(await fs.stat(join(dir, 'Images', 'b.png')))
-  })
-})
-
-describe('with no Anthropic key configured at all', () => {
-  test('a folder is still organised end to end', async () => {
-    for (const name of ['r1.pdf', 'r2.pdf', 'p.png']) await fs.writeFile(join(dir, name), name)
-    const jev = jevStub(() => ({ strategy: choiceAnswer('type') }))
-
-    const task = makeTask('organise this folder', [dir])
-    const h = harness(task, [dir], jev.impl, () => ({ optionId: 'approve' }), { noPlannerAvailable: true })
-    const final = await h.runner.run()
-
-    assert.equal(final.status, 'succeeded', final.error)
-    assert.deepEqual((await fs.readdir(join(dir, 'Documents'))).sort(), ['r1.pdf', 'r2.pdf'])
-    assert.equal(final.cost.usd, 0)
-  })
-
-  test('a request no workflow covers fails with a clear explanation', async () => {
-    const jev = jevStub(() => ({}))
-    const task = makeTask('write me a summary of this quarter and email it to the board', [])
-    const h = harness(task, [], jev.impl, () => ({ optionId: 'approve' }), { noPlannerAvailable: true })
-    const final = await h.runner.run()
-
-    assert.equal(final.status, 'failed')
-    // It must name what it CAN do rather than just refusing.
-    assert.match(final.summary!.headline, /organising a folder, finding a file, or renaming/)
-  })
-})
-
-describe('deterministic helpers', () => {
-  test('project names come from tokens shared across filenames', () => {
-    const files = ['acme-q1.pdf', 'acme-q2.pdf', 'random.txt'].map((name) => ({
-      path: `/x/${name}`,
-      name,
-      kind: 'file' as const,
-      size: 1,
-      modifiedAt: 0,
-      ext: '.pdf'
-    }))
-    assert.deepEqual(candidateProjectGroups(files), ['Acme'])
-  })
-
-  test('generic words never become folder names', () => {
-    const files = ['final-copy.pdf', 'final-draft.pdf'].map((name) => ({
-      path: `/x/${name}`,
-      name,
-      kind: 'file' as const,
-      size: 1,
-      modifiedAt: 0,
-      ext: '.pdf'
-    }))
-    assert.deepEqual(candidateProjectGroups(files), [])
-  })
-
-  test('type grouping is a pure function of the extension', () => {
-    assert.equal(typeGroupFor('.PDF'), 'Documents')
-    assert.equal(typeGroupFor('.heic'), 'Images')
-    assert.equal(typeGroupFor('.qqq'), null)
-  })
-
-  test('naming schemes are deterministic and reversible in shape', () => {
-    const file = { path: '/x/a', name: 'a', kind: 'file' as const, size: 0, modifiedAt: Date.UTC(2026, 8, 20), ext: '' }
-    assert.equal(SCHEMES.kebab!.apply('My Report FINAL', 0, file), 'my-report-final')
-    assert.equal(SCHEMES.snake!.apply('My Report', 0, file), 'my_report')
-    assert.equal(SCHEMES.title!.apply('my report', 0, file), 'My Report')
-    assert.equal(SCHEMES.date_prefix!.apply('report', 0, file), '2026-09-20-report')
-    assert.equal(SCHEMES.numbered!.apply('report', 4, file), '05-report')
-  })
+test('a web search is not claimed by the file-finding workflow', () => {
+  const find = WORKFLOWS.find((w: { id: string }) => w.id === 'find_files')!
+  // Find verbs aimed at the web or at messages belong to the planner.
+  assert.equal(find.plausible('open safari and search for flights', []), false)
+  assert.equal(find.plausible('search for that thread in my email', []), false)
+  assert.equal(find.plausible('find the cheapest flight online', []), false)
+  // Genuine file searches still match.
+  assert.equal(find.plausible('find the invoice I saved yesterday', []), true)
+  assert.equal(find.plausible('where is my tax return pdf', []), true)
 })

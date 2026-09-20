@@ -1,151 +1,207 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { LogEntry, TaskState, TaskSummaryRow } from '../../shared/protocol.js'
-import { Composer } from './components/Composer.js'
-import { TaskView } from './components/TaskView.js'
-import { History } from './components/History.js'
-import { SettingsView } from './components/Settings.js'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { BenchRow, FrontWindow, LogEntry, PetState, TaskState, TaskSummaryRow, UserQuestion } from '../../shared/protocol.js'
+import { COMMANDS, Prompt } from './components/Prompt.js'
+import { Reply } from './components/Reply.js'
+import { Steps } from './components/Steps.js'
+import { Past } from './components/Past.js'
+import { Tune } from './components/Tune.js'
+import { Bench } from './components/Bench.js'
+import { Sprite } from './components/Sprite.js'
+import { Icon, type IconName } from './components/Icon.js'
 
-type Tab = 'task' | 'history' | 'settings'
+type View = 'home' | 'steps' | 'past' | 'keys' | 'tune' | 'help' | 'bench'
+const RUNNING = ['pending', 'observing', 'planning', 'executing', 'verifying', 'awaiting_user', 'paused']
+const IDEAS: { title: string; prompt: string; icon: IconName }[] = [
+  { title: 'Find', prompt: 'Find ', icon: 'search' },
+  { title: 'Organize', prompt: 'Organize my Downloads folder', icon: 'folder' },
+  { title: 'Rename', prompt: 'Rename these files consistently', icon: 'rename' }
+]
+const TITLES: Record<View, string> = { home: 'Kibu', past: 'History', steps: 'Steps', tune: 'Settings', keys: 'Connections', help: 'Shortcuts', bench: 'Diagnostics' }
 
 export function Panel(): React.JSX.Element {
-  const [tab, setTab] = useState<Tab>('task')
+  const [view, setView] = useState<View>('home')
   const [task, setTask] = useState<TaskState | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [dropped, setDropped] = useState<string[]>([])
   const [history, setHistory] = useState<TaskSummaryRow[]>([])
-  const [hasKey, setHasKey] = useState(true)
+  const [hasKey, setHasKey] = useState<boolean | null>(null)
+  const [petState, setPetState] = useState<PetState>('idle')
+  const [front, setFront] = useState<FrontWindow | null>(null)
   const [desktopActive, setDesktopActive] = useState(false)
-  const bodyRef = useRef<HTMLDivElement>(null)
+  const [aside, setAside] = useState<string | null>(null)
+  const [drafting, setDrafting] = useState(false)
+  const [blind, setBlind] = useState(false)
+  const [bench, setBench] = useState<BenchRow[]>([])
+  const [benching, setBenching] = useState(false)
+  const [seed, setSeed] = useState<{ text: string; id: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [choosing, setChoosing] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const sending = useRef(false)
+  const workspace = useRef<HTMLElement>(null)
+  const running = !!task && RUNNING.includes(task.status)
+  const refreshHistory = useCallback(() => window.kibu.listHistory(25).then(setHistory), [])
+  const refreshSetup = useCallback(async () => {
+    const [ready, permissions] = await Promise.all([window.kibu.canWork(), window.kibu.getPermissions()])
+    setHasKey(ready)
+    setBlind(permissions.some((p) => p.permission === 'accessibility' && !p.granted))
+  }, [])
+  const reportError = useCallback((error: unknown) => setAside(error instanceof Error ? error.message : 'Something went wrong. Please try again.'), [])
 
   useEffect(() => {
+    const offDeleted = window.kibu.onHistoryDeleted((ids) => {
+      setHistory((rows) => rows.filter((r) => !ids.includes(r.id)))
+      setTask((current) => current && ids.includes(current.id) ? null : current)
+      setLogs((entries) => entries.filter((l) => !ids.includes(l.taskId)))
+    })
     const offTask = window.kibu.onTaskUpdate((t) => {
       setTask(t)
-      setTab('task')
+      if (!RUNNING.includes(t.status)) void refreshHistory().catch(reportError)
     })
-    const offLog = window.kibu.onLog((entry) => {
-      setLogs((prev) => [...prev.slice(-199), entry])
-    })
-    const offDropped = window.kibu.onDroppedPaths((paths) => {
-      setDropped(paths)
-      setTab('task')
-    })
+    const offLog = window.kibu.onLog((entry) => setLogs((prev) => [...prev.slice(-199), entry]))
+    const offDropped = window.kibu.onDroppedPaths((paths) => { setDropped(paths); setView('home') })
+    const offPet = window.kibu.onPetState(setPetState)
     const offDesktop = window.kibu.onDesktopSession(setDesktopActive)
+    const onFocus = (): void => {
+      void refreshSetup().catch(reportError)
+      void window.kibu.getFrontWindow().then(setFront).catch(reportError)
+    }
     const offFocus = window.kibu.onFocusInput(() => {
-      setTab('task')
+      onFocus()
       document.querySelector<HTMLTextAreaElement>('#composer')?.focus()
     })
-    void window.kibu.hasApiKey().then(setHasKey)
-    return () => {
-      offTask()
-      offLog()
-      offDropped()
-      offDesktop()
-      offFocus()
-    }
-  }, [])
+    onFocus()
+    void refreshHistory().catch(reportError)
+    window.addEventListener('focus', onFocus)
+    return () => { offDeleted(); offTask(); offLog(); offDropped(); offPet(); offDesktop(); offFocus(); window.removeEventListener('focus', onFocus) }
+  }, [refreshHistory, refreshSetup, reportError])
 
-  // The window grows and shrinks with its content rather than scrolling a
-  // fixed box, which keeps short answers compact.
-  useLayoutEffect(() => {
-    const el = bodyRef.current
-    if (!el) return
-    const observer = new ResizeObserver(() => {
-      void window.kibu.resizePanel(el.scrollHeight + 16)
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
+  useEffect(() => {
+    void window.kibu.setSticky(view !== 'home' || running || !!task || !!aside || desktopActive || drafting || choosing || dropped.length > 0)
+  }, [view, running, task, aside, desktopActive, drafting, choosing, dropped])
 
-  const submit = useCallback(
-    async (text: string, includeFrontWindow: boolean) => {
-      setLogs([])
-      const paths = dropped
+  useEffect(() => { void window.kibu.resizePanel(view === 'home' && !task ? 440 : 620) }, [view, task?.id])
+  useEffect(() => { setConfirmClear(false); setConfirmDelete(false); workspace.current?.scrollTo({ top: 0 }) }, [view, task?.id, task?.question?.id])
+
+  const answer = useCallback(async (question: UserQuestion, optionId: string | null, text?: string) => {
+    if (!task) return
+    await window.kibu.answerQuestion({ taskId: task.id, questionId: question.id, optionId, text })
+  }, [task])
+
+  const send = useCallback(async (text: string, withFront: boolean) => {
+    if (sending.current) return
+    sending.current = true
+    try {
+      setAside(null)
+      if (task?.question?.allowFreeText) {
+        await answer(task.question, null, text)
+        setView('home')
+        return
+      }
+      if (running) throw new Error('Finish or stop the current task first.')
+      await window.kibu.startTask({ request: text, droppedPaths: dropped, includeFrontWindow: withFront })
       setDropped([])
-      await window.kibu.startTask({ request: text, droppedPaths: paths, includeFrontWindow })
-    },
-    [dropped]
-  )
+      setLogs([])
+      setView('home')
+    } finally { sending.current = false }
+  }, [dropped, task, running, answer])
 
-  const openHistory = useCallback(async () => {
-    setHistory(await window.kibu.listHistory(25))
-    setTab('history')
-  }, [])
+  const command = useCallback(async (name: string) => {
+    setAside(null)
+    try {
+      switch (name) {
+        case 'undo': {
+          const rows = await window.kibu.listHistory(25)
+          const target = task?.summary?.undoable ? task.id : rows.find((r) => r.undoable)?.id
+          if (!target) { setAside('No file changes to undo yet.'); return }
+          const report = await window.kibu.undoTask(target)
+          setAside(`Restored ${report.reversed} item${report.reversed === 1 ? '' : 's'}.${report.skipped.length ? ` ${report.skipped.length} skipped: ${report.skipped[0]?.reason}` : ''}`)
+          await refreshHistory()
+          return
+        }
+        case 'stop':
+          if (task && running) await window.kibu.cancelTask(task.id)
+          return
+        case 'bench':
+          setBench([]); setBenching(true); setView('bench')
+          try { setBench(await window.kibu.runBench()) } finally { setBenching(false) }
+          return
+        case 'past': await refreshHistory(); setView('past'); return
+        case 'steps': case 'keys': case 'tune': setView(name); return
+        default: setView('help')
+      }
+    } catch (error) { reportError(error) }
+  }, [task, running, refreshHistory, reportError])
 
-  const running = task ? !['succeeded', 'failed', 'cancelled'].includes(task.status) : false
+  function compose(text: string): void { setView('home'); setSeed({ text, id: Date.now() }) }
+  async function openTask(id: string): Promise<void> {
+    if (running && id !== task?.id) { setAside('Finish or stop your current task before opening another.'); return }
+    try { const t = await window.kibu.getTask(id); if (t) { setTask(t); setView('home') } } catch (error) { reportError(error) }
+  }
+  async function deleteTask(id: string): Promise<void> {
+    await window.kibu.deleteTask(id)
+    setHistory((rows) => rows.filter((r) => r.id !== id))
+    if (task?.id === id) { setTask(null); setLogs([]) }
+  }
+  const placeholder = task?.question ? (task.question.allowFreeText ? 'Your answer…' : 'Choose an option') : running ? 'Working…' : dropped.length ? 'What should I do with these?' : 'Ask Kibu…'
 
   return (
-    <div className="panel" ref={bodyRef}>
-      <header className="panel-head">
-        <div className="brand">
-          <span className="brand-dot" />
-          Kibu
-        </div>
-        <nav>
-          <button className={tab === 'task' ? 'on' : ''} onClick={() => setTab('task')}>
-            Task
-          </button>
-          <button className={tab === 'history' ? 'on' : ''} onClick={openHistory}>
-            History
-          </button>
-          <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>
-            Settings
-          </button>
+    <div className={`kibu ${dragging ? 'is-dropping' : ''}`}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && e.target instanceof HTMLElement && !['TEXTAREA', 'INPUT'].includes(e.target.tagName)) {
+          if (view !== 'home') setView('home'); else void window.kibu.closePanel()
+        }
+      }}
+      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes('Files')) setDragging(true) }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragging(false) }}
+      onDrop={(e) => {
+        e.preventDefault(); setDragging(false)
+        const paths = Array.from(e.dataTransfer.files).map((f) => window.kibu.getPathForFile(f)).filter(Boolean)
+        if (paths.length) { setDropped((prev) => [...new Set([...prev, ...paths])].slice(0, 200)); setView('home') }
+      }}>
+      <header className="app-header">
+        <button className="brand" onClick={() => setView('home')} aria-label="Kibu home">kibu<span className="brand-dot" /></button>
+        <nav aria-label="Navigation">
+          <button className={`icon-button ${view === 'past' ? 'selected' : ''}`} aria-label="History" title="History" onClick={() => void command('past')}><Icon name="clock" /></button>
+          <button className={`icon-button ${view === 'tune' ? 'selected' : ''}`} aria-label="Settings" title={hasKey === false ? "Settings · connect a model for app and browser tasks" : "Settings"} onClick={() => setView('tune')}><Icon name="settings" />{hasKey === false && <i className="connection-dot" />}</button>
+          <button className="icon-button" aria-label="Help" title="Help" onClick={() => setView('help')}><Icon name="help" /></button>
+          <button className="icon-button" aria-label="Hide Kibu" title="Hide" onClick={() => void window.kibu.closePanel()}><Icon name="close" /></button>
         </nav>
-        <button className="close" onClick={() => void window.kibu.closePanel()} aria-label="Close">
-          ✕
-        </button>
       </header>
-
-      {desktopActive && (
-        <div className="desktop-banner">
-          Kibu is using your screen and keyboard.
-          <button onClick={() => void window.kibu.stopDesktopSession()}>Stop</button>
-        </div>
-      )}
-
-      {!hasKey && tab !== 'settings' && (
-        <div className="notice">
-          Kibu needs an API key before it can run a task — a TypeSafe (Jev) key for file tasks, an Anthropic key for
-          everything else.{' '}
-          <button className="link" onClick={() => setTab('settings')}>
-            Add it
-          </button>
-        </div>
-      )}
-
-      <div className="panel-body">
-        {tab === 'task' && (
-          <>
-            {task && <TaskView task={task} logs={logs.filter((l) => l.taskId === task.id)} />}
-            {!running && (
-              <Composer
-                droppedPaths={dropped}
-                onClearDropped={() => setDropped([])}
-                onSubmit={submit}
-                placeholder={task ? 'Ask for something else…' : 'What can I do for you?'}
-              />
-            )}
-          </>
-        )}
-        {tab === 'history' && (
-          <History
-            rows={history}
-            onOpen={async (id) => {
-              const t = await window.kibu.getTask(id)
-              if (t) {
-                setTask(t)
-                setTab('task')
-              }
-            }}
-            onUndo={async (id) => {
-              const report = await window.kibu.undoTask(id)
-              setHistory(await window.kibu.listHistory(25))
-              return report
-            }}
-          />
-        )}
-        {tab === 'settings' && <SettingsView onKeyChange={setHasKey} />}
-      </div>
+      <main className={`workspace ${view === 'home' && !task ? 'home-workspace' : ''}`} ref={workspace}>
+        {desktopActive && <div className="driving-line"><span className="live" />Controlling your screen<button onClick={() => void window.kibu.stopDesktopSession()}>Stop</button></div>}
+        {aside && <div className="notice" role="status"><span>{aside}</span><button className="icon-button" aria-label="Dismiss message" onClick={() => setAside(null)}><Icon name="close" size={15} /></button></div>}
+        {view === 'home' && !task && <section className="idle-space">
+          <div className="orb-stage"><Sprite state={petState} size={164} /></div>
+          <div className="quick-actions">{IDEAS.map((idea) => <button key={idea.title} onClick={() => compose(idea.prompt)}><Icon name={idea.icon} size={15} />{idea.title}</button>)}</div>
+        </section>}
+        {view === 'home' && task && <section className="task-page">
+          <div className="task-toolbar"><Sprite state={task.petState} size={35} quiet /><span className="task-status">{task.status === 'awaiting_user' ? 'Your input' : task.status === 'succeeded' ? 'Done' : task.status === 'failed' ? 'Needs attention' : task.status === 'cancelled' ? 'Stopped' : task.status === 'paused' ? 'Paused' : 'Working'}</span>
+            {!running && <><button className="icon-button" aria-label="Delete this task" title="Delete task" onClick={() => setConfirmDelete(!confirmDelete)}><Icon name="trash" size={16} /></button><button className="icon-button" aria-label="New task" title="New task" onClick={() => { setTask(null); setAside(null) }}><Icon name="plus" /></button></>}
+          </div>
+          {confirmDelete && <div className="delete-confirm"><span>Delete task and undo history? Files stay.</span><button className="danger-button" onClick={() => void deleteTask(task.id).catch(reportError)}>Delete</button><button className="icon-button" aria-label="Cancel deletion" onClick={() => setConfirmDelete(false)}><Icon name="close" size={16} /></button></div>}
+          <Reply key={task.id} task={task} onAnswer={answer} onSteps={() => setView('steps')} />
+        </section>}
+        {view !== 'home' && <div className="page-heading"><button className="icon-button" aria-label="Back home" onClick={() => setView('home')}><Icon name="back" size={17} /></button><h1>{TITLES[view]}</h1>
+          {view === 'past' && history.some((r) => !RUNNING.includes(r.status)) && <button className="subtle-button" onClick={() => setConfirmClear(!confirmClear)}>Clear</button>}
+        </div>}
+        {view === 'past' && confirmClear && <div className="delete-confirm"><span>Delete finished tasks and undo history? Files stay.</span><button className="danger-button" onClick={async () => { try { await window.kibu.clearHistory(); await refreshHistory(); setConfirmClear(false) } catch (e) { reportError(e) } }}>Delete all</button><button className="icon-button" aria-label="Cancel clear history" onClick={() => setConfirmClear(false)}><Icon name="close" size={16} /></button></div>}
+        {view === 'steps' && <Steps task={task} logs={task ? logs.filter((l) => l.taskId === task.id) : []} />}
+        {view === 'past' && <Past rows={history} onOpen={openTask} onDelete={deleteTask} onUndo={async (id) => { const report = await window.kibu.undoTask(id); await refreshHistory(); return report }} />}
+        {(view === 'keys' || view === 'tune') && <Tune only={view === 'keys' ? 'keys' : undefined} onKeyChange={() => void refreshSetup().catch(reportError)} />}
+        {view === 'bench' && <Bench rows={bench} running={benching} />}
+        {view === 'help' && <div className="help-page"><p className="capability-note">Files · Mac apps · Browser</p>{blind && <button className="permission-link" onClick={() => setView('tune')}>Enable app control →</button>}<ul className="help">{COMMANDS.map((c) => <li key={c.name}><button className="cmd" onClick={() => void command(c.name)}>/{c.name}</button><span className="dim">{c.hint}</span></li>)}</ul></div>}
+      </main>
+      {running && view !== 'home' && <button className="return-task" onClick={() => setView('home')}><span className="pulse" />{task?.status === 'awaiting_user' ? 'Your input needed' : 'Task in progress'}<Icon name="arrow" size={15} /></button>}
+      <footer className="composer-dock">
+        <Prompt state={petState} placeholder={placeholder} busy={running} canAnswer={!!task?.question?.allowFreeText} seed={seed} dropped={dropped} front={front}
+          onAttach={async () => { setChoosing(true); try { await window.kibu.setSticky(true); const paths = await window.kibu.choosePaths(); setDropped((prev) => [...new Set([...prev, ...paths])].slice(0, 200)) } catch (e) { reportError(e) } finally { setChoosing(false) } }}
+          onClearDropped={() => setDropped([])} onSend={send} onCommand={command}
+          onNumber={(n) => { const q = task?.question; if (!q || view !== 'home') return false; const option = (q.options ?? [{ id: 'ok', label: 'Go ahead' }])[n - 1]; if (!option) return false; void answer(q, option.id).catch(reportError); return true }}
+          onDraft={setDrafting} onEscape={() => view === 'home' ? void window.kibu.closePanel() : setView('home')} />
+      </footer>
+      {dragging && <div className="drop-overlay"><Icon name="attach" size={30} /><strong>Drop files</strong></div>}
     </div>
   )
 }

@@ -24,6 +24,7 @@ import type { Workflow, WorkflowContext, WorkflowResult } from './types.js'
 export const organizeWorkflow: Workflow = {
   id: 'organize_folder',
   description: 'Tidy a folder by moving its files into subfolders, grouped by type, project or date.',
+  routes: ['files'],
 
   plausible(request, droppedPaths) {
     if (droppedPaths.length > 0) return true

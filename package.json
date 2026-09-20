@@ -15,7 +15,8 @@
     "helper:build": "bash src/os/swift/build.sh",
     "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
     "icons": "node scripts/make-tray-icon.mjs",
-    "setup": "npm run icons && npm run helper:build && npm run build"
+    "setup": "npm run icons && npm run helper:build && npm run build",
+    "test:ui": "node scripts/renderer-smoke.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

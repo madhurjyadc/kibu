@@ -88,7 +88,8 @@ function harness(
       listApps: async () => [],
       listDisplays: async () => [{ id: 1, bounds: { x: 0, y: 0, width: 1470, height: 956 }, scaleFactor: 2, primary: true }]
     } as unknown as RunnerDeps['os'],
-    browser: {} as RunnerDeps['browser'],
+    // A browser that is simply never open: these tests do not touch the web.
+    browser: { isOpen: () => false, close: async () => {}, page: async () => { throw new Error('no browser in this test') } } as unknown as RunnerDeps['browser'],
     registry,
     model: DEFAULT_MODEL_CONFIG,
     apiKey: null,
@@ -97,6 +98,7 @@ function harness(
     workflowsEnabled: false,
     droppedPaths: [],
     frontWindow: null,
+    previousTurn: null,
     confirmEveryAction: false,
     createPlanner: () => new ScriptedPlanner(script)
   }

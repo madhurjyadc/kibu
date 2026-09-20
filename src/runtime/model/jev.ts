@@ -1,3 +1,4 @@
+import { hasLocalSearchIntent } from '../search-language.js'
 import {
   TypeSafeClient,
   choice,
@@ -147,6 +148,32 @@ export class Jev {
     }
   }
 
+  /**
+   * Whether the browser Kibu opened should be closed now the task is done.
+   *
+   * Both answers are defined here, in code; Jev only picks between them, and
+   * a missing or unsure answer leaves the window open — the outcome that
+   * cannot lose anything.
+   */
+  async shouldCloseBrowser(request: string): Promise<boolean> {
+    const answers = await this.ask(
+      'close_browser',
+      { userRequest: request },
+      {
+        close: noul(
+          'The assistant opened a browser to do this and has now finished. Was the browser only a means to ' +
+            'an end, so it should be closed and tidied away?',
+          {
+            true: 'The user wanted an answer or an action, not a browser window to look at.',
+            false: 'The user wanted something left open on screen for them to use or read.'
+          }
+        )
+      }
+    )
+    if (!answers) return true // No Jev: the plain default is to tidy up.
+    return answers.close.noul > 0.6
+  }
+
   /* ---------------------------------------------------------------- *
    * Routing
    * ---------------------------------------------------------------- */
@@ -206,8 +233,21 @@ export class Jev {
   /** Keyword routing. Confident enough often enough to skip the network call. */
   private routeLocally(request: string, hasDroppedPaths: boolean): RouteDecision {
     const r = request.toLowerCase()
-    const browser = /\b(website|url|http|browser|online|web form|log ?in to|download from|fill in the form)\b/.test(r)
-    const files = /\b(file|files|folder|desktop|downloads|organi[sz]e|rename|sort|move|pdf|screenshot)\b/.test(r)
+    // Naming a site, or a domain, is as plain a web signal as saying "website".
+    // This list will never be complete — that is exactly why an unsure answer
+    // goes to Jev rather than to a bigger list.
+    const site =
+      /\b(youtube|netflix|gmail|google|twitter|x\.com|reddit|amazon|instagram|facebook|spotify|wikipedia|github|linkedin|maps|chatgpt)\b/.test(r) ||
+      // Any domain-shaped token, minus the ones that are really filenames.
+      // Listing top-level domains is a losing game: bunkr.cr is as real as
+      // youtube.com, so the rule is "looks like a host, is not a file".
+      (/\b[a-z0-9][a-z0-9-]{1,}\.[a-z]{2,6}\b/.test(r) &&
+        !/\.(pdf|png|jpe?g|gif|mp4|mov|mp3|docx?|xlsx?|pptx?|txt|csv|zip|dmg|heic|webp|md|json|ts|js|py)\b/.test(r))
+    const browser =
+      site ||
+      /\b(website|url|http|browser|online|web form|log ?in to|download from|fill in the form|watch|stream|search the web|google it)\b/.test(r)
+    const files = hasLocalSearchIntent(r) ||
+      /\b(file|files|folder|desktop|downloads|downloaded|organi[sz]e|rename|sort|move|pdf|screenshot|document|invoice|spreadsheet)\b/.test(r)
     const desktop = /\b(app|application|window|finder|preview|notes|mail|keynote|pages|numbers|this window)\b/.test(r)
     const signals = [browser, files, desktop].filter(Boolean).length
 

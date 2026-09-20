@@ -40,7 +40,7 @@ function makeCtx(task: TaskState): ToolContext {
   return {
     task,
     os: {} as ToolContext['os'],
-    browser: {} as ToolContext['browser'],
+    browser: { isOpen: () => false, close: async () => {}, page: async () => { throw new Error('no browser in this test') } } as unknown as ToolContext['browser'],
     log: () => {},
     progress: () => {},
     observe: (o) => {
