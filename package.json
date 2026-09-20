@@ -1,0 +1,38 @@
+{
+  "name": "kibu",
+  "version": "0.1.0",
+  "description": "A desktop pet that does real work on your computer.",
+  "main": "./out/main/index.js",
+  "author": "Kibu",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "helper:build": "bash src/os/swift/build.sh",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "icons": "node scripts/make-tray-icon.mjs",
+    "setup": "npm run icons && npm run helper:build && npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
+    "@typesafe-ai/sdk": "^0.6.0",
+    "playwright": "^1.63.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "electron": "^44.4.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6"
+  }
+}
