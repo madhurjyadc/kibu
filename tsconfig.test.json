@@ -9,5 +9,5 @@
     "types": ["node"],
     "jsx": "react-jsx"
   },
-  "include": ["src/shared/**/*.ts", "src/os/**/*.ts", "src/runtime/**/*.ts", "src/main/services/db.ts", "src/main/services/undo.ts", "test/**/*.ts"]
+  "include": ["src/shared/**/*.ts", "src/os/**/*.ts", "src/runtime/**/*.ts", "src/main/services/db.ts", "src/main/services/undo.ts", "src/renderer/src/types.d.ts", "test/**/*.ts"]
 }

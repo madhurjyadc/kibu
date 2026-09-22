@@ -69,6 +69,11 @@ export interface RunnerDeps {
   jevFetch?: import('@typesafe-ai/sdk').Fetch
 }
 
+/** A reply that talks about answering rather than answering. */
+export function isNarration(text: string): boolean {
+  return /^\s*(?:i(?:'m| am) )?(?:answering|responding|replying)\b|^\s*no (?:tools?|actions?|steps?) (?:are )?(?:needed|required)/i.test(text)
+}
+
 /** Which tool capabilities each route unlocks. Tool availability is scoped. */
 const ROUTE_CAPABILITIES: Record<string, string[]> = {
   files: ['files', 'shell', 'user.interact'],
@@ -487,6 +492,7 @@ export class TaskRunner {
     const tools = this.availableTools()
     const schema = this.deps.registry.toModelSchema(tools)
     let step = 0
+    let nudgedForAnswer = false
 
     for (;;) {
       await this.checkpoint()
@@ -533,6 +539,13 @@ export class TaskRunner {
       if (proposal.calls.length === 0) {
         // Prose with no action: either it is done, or it needs a nudge.
         if (proposal.stopReason === 'end_turn') {
+          // A reply that narrates instead of answering ("Answering directly,
+          // no actions needed") is sent back once for the actual answer.
+          if (!nudgedForAnswer && isNarration(proposal.text)) {
+            nudgedForAnswer = true
+            this.planner.addNote('That describes what you are doing instead of answering. Reply with the answer itself, written to the user.')
+            continue
+          }
           this.finishFromText(proposal.text)
           return
         }
@@ -852,7 +865,8 @@ export class TaskRunner {
   /** The model ended its turn without calling finish; treat prose as the result. */
   private finishFromText(text: string): void {
     this.task.summary = {
-      headline: text ? text.slice(0, 200) : 'Finished without a summary',
+      // A conversational answer can be a few paragraphs; only runaway text is clipped.
+      headline: text ? text.slice(0, 4000) : 'Finished without a summary',
       evidence: this.evidence,
       undoable: this.undoStack.length > 0
     }

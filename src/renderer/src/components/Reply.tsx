@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Evidence, TaskState, UserQuestion } from '../../../shared/protocol.js'
 import { basename } from '../lib/paths.js'
+import { Markdown, plainText } from './Markdown.js'
+import { Icon } from './Icon.js'
 
 const RUNNING = ['pending', 'observing', 'planning', 'executing', 'verifying', 'awaiting_user', 'paused']
 
@@ -20,6 +22,7 @@ export function Reply({
 }): React.JSX.Element {
   const [undoing, setUndoing] = useState(false)
   const [undoNote, setUndoNote] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const running = RUNNING.includes(task.status)
   const verified = task.actions.filter((a) => a.verification?.verified).length
   const summary = task.summary
@@ -44,7 +47,10 @@ export function Reply({
   return (
     <div className={`reply status-${task.status}`}>
       <p className="asked">{task.request}</p>
-      
+      <div className="kibu-turn">
+      <div className="kibu-says">
+        <div className="says-head"><i className="says-led" />Kibu{!running && <span>{took(task)}</span>}</div>
+
       {!running && !summary && <p className="said">{task.error || task.statusLine || "Task ended."}</p>}
       {running && task.plan.length > 0 && <details><summary>Plan</summary><ol className="task-plan">{task.plan.map((step) => <li key={step.id} className={step.status}><span>{step.status === "done" ? "✓" : step.status === "active" ? "◉" : "○"}</span>{step.description}</li>)}</ol></details>}
 
@@ -71,9 +77,10 @@ export function Reply({
 
       {summary && !running && (
         <>
-          <p className="said">{summary.headline}</p>
+          <Markdown text={summary.headline} className={summary.headline.length < 90 && !summary.headline.includes('\n') ? 'is-short' : ''} />
           {task.error && task.status !== 'succeeded' && <p className="said bad">{task.error}</p>}
 
+          {summary.undoable && <p className="safety-net">Changed your mind? Everything I moved can go back.</p>}
           {summary.evidence.length > 0 && (
             <ul className="proof">
               {summary.evidence.map((e, i) => (
@@ -82,12 +89,11 @@ export function Reply({
             </ul>
           )}
 
-          <p className="trace">
-            <button className="trace-link" onClick={onSteps}>
-              Details
+          <p className="trace answer-foot">
+            <button className="foot-btn" aria-label={copied ? 'Copied' : 'Copy answer'} title="Copy" onClick={() => void navigator.clipboard.writeText(plainText(summary.headline)).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }, () => {})}>
+              <Icon name={copied ? 'check' : 'copy'} size={14} />{copied ? 'Copied' : 'Copy'}
             </button>
-            
-            
+            {task.actions.length > 0 && <button className="foot-btn" onClick={onSteps}><Icon name="list" size={14} />{task.actions.length} step{task.actions.length === 1 ? '' : 's'}</button>}
             {summary.undoable && (
               <button className="undo" onClick={undo} disabled={undoing}>
                 {undoing ? 'Undoing…' : 'Undo'}
@@ -101,8 +107,16 @@ export function Reply({
           )}
         </>
       )}
+      </div>
+      </div>
     </div>
   )
+}
+
+/** How long the task took, the way a person would say it. */
+function took(task: TaskState): string {
+  const s = Math.max(0, Math.round((task.updatedAt - task.createdAt) / 1000))
+  return s < 1 ? 'instantly' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
 /**

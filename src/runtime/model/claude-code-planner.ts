@@ -41,8 +41,10 @@ interface RawProposal {
 
 const REPLY_CONTRACT = `Reply with ONE JSON object and nothing else — no prose around it, no markdown fence:
 
-{"text": "<a short line about what you are doing, may be empty>",
+{"text": "<see below>",
  "calls": [{"name": "<tool name>", "input": { ... }}]}
+
+"text" is shown to the user. When the request is a question or conversation that needs no tool, put your complete answer in "text", written to the user in plain words, and send no calls. Never describe what you are doing instead of answering ("Answering directly", "No actions needed"). When you are calling tools, "text" may be a short line about the step, or empty.
 
 Propose one step at a time unless several calls are genuinely independent. Use only the tools listed above, with exactly those input fields. If the task is finished, call finish. If you need the user, call ask_user.`
 

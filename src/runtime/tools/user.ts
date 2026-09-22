@@ -95,7 +95,10 @@ export const finishTask: ToolDefinition = {
   capability: 'user.interact',
   input: z.object({
     success: z.boolean(),
-    headline: z.string().min(1).describe('One sentence, past tense, e.g. "Sorted 23 files into 4 folders"'),
+    headline: z
+      .string()
+      .min(1)
+      .describe('For work: one sentence, past tense, e.g. "Sorted 23 files into 4 folders". For a question: the answer itself, addressed to the user.'),
     evidence: z
       .array(
         z.object({

@@ -1,18 +1,21 @@
 import { BrowserWindow, screen } from 'electron'
 import { PET_HEIGHT, PET_WIDTH } from './pet.js'
 
-const PANEL_WIDTH = 620
-/** A compact workspace with independently scrolling content. */
-const PANEL_MIN_HEIGHT = 360
+const PANEL_WIDTH = 640
+/**
+ * Spotlight-shaped: the panel can be as short as its command bar plus a few
+ * rows, and grows with what it has to show.
+ */
+const PANEL_MIN_HEIGHT = 120
 const PANEL_MAX_HEIGHT = 660
 
 /**
- * The collapsed handle. Small enough to forget, big enough to hit, and it
- * keeps its flat edge against the side of the screen so it reads as stuck to
- * it rather than floating near it.
+ * Minimized, the panel becomes an island: a small black pill at the top
+ * centre of the screen, where the eye already goes for status. It shows what
+ * Kibu is doing and opens back out with one click.
  */
-const TAB_WIDTH = 54
-const TAB_HEIGHT = 128
+const ISLAND_WIDTH = 300
+const ISLAND_HEIGHT = 46
 
 export interface PanelWindowDeps {
   preload: string
@@ -60,11 +63,20 @@ export function isPanelAnimating(): boolean {
 export function createPanelWindow(deps: PanelWindowDeps, placement: PanelPlacement): BrowserWindow {
   const win = new BrowserWindow({
     width: PANEL_WIDTH,
-    height: Math.min(440, screen.getPrimaryDisplay().workArea.height - 48),
+    height: Math.min(300, screen.getPrimaryDisplay().workArea.height - 48),
     frame: false,
     transparent: true,
     resizable: false,
     movable: true,
+    // The panel is dragged by its whole surface, like Spotlight. Without these,
+    // a double-click on that surface would zoom it to fill the screen.
+    maximizable: false,
+    fullscreenable: false,
+    // Kibu is rarely the active app when you reach for it. Without this, the
+    // first click on an unfocused panel — including on the minimized handle —
+    // only focuses the window and is thrown away, so every button seems to
+    // need two clicks.
+    acceptFirstMouse: true,
     skipTaskbar: true,
     alwaysOnTop: false,
     hasShadow: true,
@@ -75,7 +87,11 @@ export function createPanelWindow(deps: PanelWindowDeps, placement: PanelPlaceme
       preload: deps.preload,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      // A hidden panel keeps rendering, so it is already up to date — right
+      // size, latest task — the moment it is shown, instead of flashing an old
+      // frame and then catching up.
+      backgroundThrottling: false
     }
   })
 
@@ -112,14 +128,31 @@ export function setPanelPinned(win: BrowserWindow, value: boolean): void {
 
 const FRAME_MS = 1000 / 60
 let animation: NodeJS.Timeout | null = null
+/** Where the running animation will end, so a resize mid-flight aims there. */
+let animTarget: Bounds | null = null
+/** True while morphing between panel and island; resizes wait for it. */
+let morphing = false
+/** A content height that arrived mid-morph, applied once the morph lands. */
+let pendingHeight: number | null = null
 
+type Ease = (t: number) => number
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3)
 }
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+}
+/** A soft spring: a hair past the target, then settle. */
+function easeOutBack(t: number): number {
+  const c1 = 1.1
+  const c3 = c1 + 1
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2)
+}
 
 /** Glides the window to new bounds instead of teleporting it there. */
-function animateBounds(win: BrowserWindow, to: Bounds, duration: number): void {
+function animateBounds(win: BrowserWindow, to: Bounds, duration: number, ease: Ease = easeOutCubic, done?: () => void): void {
   if (animation) clearInterval(animation)
+  animTarget = to
   const from = win.getBounds()
   // macOS refuses programmatic resizes while a window declares itself
   // unresizable, so the flag comes off for the length of the move. Nothing is
@@ -131,16 +164,18 @@ function animateBounds(win: BrowserWindow, to: Bounds, duration: number): void {
   const finish = (): void => {
     if (animation) clearInterval(animation)
     animation = null
+    animTarget = null
     if (!win.isDestroyed()) {
       win.setBounds(to, false)
       if (!wasResizable) win.setResizable(false)
     }
+    done?.()
   }
 
   animation = setInterval(() => {
     if (win.isDestroyed()) { finish(); return }
     const t = Math.min(1, (Date.now() - started) / duration)
-    const k = easeOutCubic(t)
+    const k = ease(t)
     win.setBounds(
       {
         x: Math.round(from.x + (to.x - from.x) * k),
@@ -173,36 +208,46 @@ function onScreen(bounds: Bounds): Bounds {
   }
 }
 
-/** Where the collapsed handle sits: right edge, vertically near where it was. */
-function tabBounds(win: BrowserWindow): Bounds {
+/** The island: top centre of the display the panel is on, just under the menu bar. */
+function islandBounds(win: BrowserWindow): Bounds {
   const area = workAreaFor(win)
-  const current = win.getBounds()
-  const middle = current.y + current.height / 2 - TAB_HEIGHT / 2
   return {
-    x: area.x + area.width - TAB_WIDTH,
-    y: Math.max(area.y + 12, Math.min(Math.round(middle), area.y + area.height - TAB_HEIGHT - 12)),
-    width: TAB_WIDTH,
-    height: TAB_HEIGHT
+    x: area.x + Math.round((area.width - ISLAND_WIDTH) / 2),
+    y: area.y + 8,
+    width: ISLAND_WIDTH,
+    height: ISLAND_HEIGHT
   }
 }
 
-/** Collapses the panel into the handle on the right edge of the screen. */
+/** Shrinks the panel into the island. */
 export function dockPanel(win: BrowserWindow): void {
   if (win.isDestroyed() || docked) return
-  expanded = win.getBounds()
+  // If a resize was in flight, the panel's real size is where it was going.
+  expanded = animTarget ?? win.getBounds()
   docked = true
+  morphing = true
   win.setAlwaysOnTop(true, 'floating')
-  animateBounds(win, tabBounds(win), 260)
+  animateBounds(win, islandBounds(win), 340, easeInOutCubic, () => { morphing = false })
 }
 
-/** Opens the handle back out into the panel. */
+/**
+ * Opens the island back into the panel — exactly where it was, at the size
+ * its content now needs.
+ */
 export function undockPanel(win: BrowserWindow): void {
   if (win.isDestroyed() || !docked) return
   docked = false
+  morphing = true
   win.setAlwaysOnTop(pinned, 'floating')
-  const target = expanded ? onScreen(expanded) : onScreen({ ...win.getBounds(), width: PANEL_WIDTH, height: 440 })
+  const base = expanded ?? { ...win.getBounds(), width: PANEL_WIDTH, height: 300 }
+  const height = pendingHeight ?? base.height
+  pendingHeight = null
   expanded = null
-  animateBounds(win, target, 240)
+  animateBounds(win, onScreen({ ...base, width: PANEL_WIDTH, height }), 380, easeOutBack, () => {
+    morphing = false
+    // Content that changed size during the morph gets its size now.
+    if (pendingHeight !== null) { const h = pendingHeight; pendingHeight = null; resizePanel(win, h) }
+  })
 }
 
 export function togglePanelDock(win: BrowserWindow): void {
@@ -219,6 +264,8 @@ export function togglePanelDock(win: BrowserWindow): void {
 export function resetPanelDock(win: BrowserWindow): void {
   if (!docked) return
   if (animation) { clearInterval(animation); animation = null }
+  animTarget = null
+  morphing = false
   docked = false
   if (win.isDestroyed()) return
   win.setAlwaysOnTop(pinned, 'floating')
@@ -240,7 +287,11 @@ export function resizePanel(win: BrowserWindow, height: number): void {
     if (expanded) expanded = onScreen({ ...expanded, height: clamped })
     return
   }
-  const bounds = win.getBounds()
+  // Never interrupt the morph: a resize measured mid-flight would restart the
+  // animation from a half-open window and leave it stuck small.
+  if (morphing) { pendingHeight = clamped; return }
+  const bounds = animTarget ?? win.getBounds()
+  // Already there, or already on the way there: nothing to do.
   if (bounds.height === clamped) return
   animateBounds(win, onScreen({ ...bounds, height: clamped }), 180)
 }
@@ -269,4 +320,55 @@ export function positionPanelNearPet(panel: BrowserWindow, pet: BrowserWindow): 
   panel.setPosition(x, Math.round(y), false)
 }
 
-export { PANEL_WIDTH, PANEL_MIN_HEIGHT, PANEL_MAX_HEIGHT, TAB_WIDTH, TAB_HEIGHT }
+let fade: NodeJS.Timeout | null = null
+/** Shows the panel with a quick fade, so it arrives rather than blinks in. */
+export function fadeIn(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  if (fade) clearInterval(fade)
+  win.setOpacity(0)
+  win.show()
+  const started = Date.now()
+  fade = setInterval(() => {
+    if (win.isDestroyed()) { if (fade) clearInterval(fade); fade = null; return }
+    const t = Math.min(1, (Date.now() - started) / 110)
+    win.setOpacity(easeOutCubic(t))
+    if (t >= 1) { if (fade) clearInterval(fade); fade = null }
+  }, FRAME_MS)
+}
+
+/**
+ * Spotlight behaviour: the panel opens on the display you are working on.
+ *
+ * Where you dragged it is kept as a position *within* a display, so moving to
+ * another monitor brings it to the same spot there instead of leaving it on a
+ * screen you are not looking at.
+ */
+export function placeOnActiveDisplay(panel: BrowserWindow, saved: { x: number; y: number }): void {
+  const cursor = screen.getCursorScreenPoint()
+  const active = screen.getDisplayNearestPoint(cursor).workArea
+  const { width, height } = panel.getBounds()
+  const home = screen.getDisplayNearestPoint({ x: saved.x + width / 2, y: saved.y + height / 2 }).workArea
+  if (home.x === active.x && home.y === active.y && home.width === active.width) {
+    panel.setBounds(onScreen({ x: saved.x, y: saved.y, width, height }), false)
+    return
+  }
+  const fx = (saved.x - home.x) / Math.max(1, home.width - width)
+  const fy = (saved.y - home.y) / Math.max(1, home.height - height)
+  panel.setBounds(onScreen({
+    x: Math.round(active.x + fx * (active.width - width)),
+    y: Math.round(active.y + fy * (active.height - height)),
+    width,
+    height
+  }), false)
+}
+
+/** Puts the panel back in the default spot on the display under the cursor. */
+export function centerPanel(panel: BrowserWindow): void {
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
+  const { width, height } = panel.getBounds()
+  const x = area.x + Math.round((area.width - width) / 2)
+  const y = Math.max(area.y + 24, Math.min(area.y + Math.round(area.height * 0.2), area.y + area.height - height - 24))
+  animateBounds(panel, { x, y, width, height }, 220)
+}
+
+export { PANEL_WIDTH, PANEL_MIN_HEIGHT, PANEL_MAX_HEIGHT, ISLAND_WIDTH, ISLAND_HEIGHT }

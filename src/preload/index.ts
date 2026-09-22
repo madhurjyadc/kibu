@@ -53,6 +53,10 @@ const bridge: KibuBridge & { getPathForFile(file: File): string } = {
   openUrl: (url) => ipcRenderer.invoke(IPC.openUrl, url),
   resizePanel: (h) => ipcRenderer.invoke(IPC.panelResize, h),
   closePanel: () => ipcRenderer.invoke(IPC.panelClose),
+  centerPanel: () => ipcRenderer.invoke(IPC.panelCenter),
+  petCompose: (text: string) => ipcRenderer.invoke(IPC.petCompose, text),
+  onSeed: (cb) => subscribe<string>(IPC.onSeed, cb),
+  dragPanel: (phase: 'start' | 'move' | 'end') => ipcRenderer.invoke(IPC.panelDrag, phase),
   minimizePanel: () => ipcRenderer.invoke(IPC.panelMinimize),
   pinPanel: (pinned: boolean) => ipcRenderer.invoke(IPC.panelPin, pinned),
   getPanelState: () => ipcRenderer.invoke(IPC.panelStateGet),
@@ -70,6 +74,7 @@ const bridge: KibuBridge & { getPathForFile(file: File): string } = {
   onFocusInput: (cb) => subscribe<void>(IPC.onFocusInput, () => cb()),
   onPanelState: (cb) => subscribe<PanelState>(IPC.onPanelState, cb),
   onDesktopSession: (cb) => subscribe<boolean>(IPC.onDesktopSession, cb),
+  onCursor: (cb) => subscribe<{ dx: number; dy: number }>(IPC.onCursor, cb),
 
   // Electron no longer exposes File.path; this is the supported replacement
   // and is the only way the renderer learns a dropped file's location.

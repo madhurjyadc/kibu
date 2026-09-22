@@ -16,6 +16,9 @@ import {
   resizePanel,
   setPanelPinned,
   togglePanelDock,
+  placeOnActiveDisplay,
+  centerPanel,
+  fadeIn,
   resetPanelDock,
   isPanelDocked,
   isPanelPinned,
@@ -110,6 +113,28 @@ function broadcast(channel: string, payload: unknown): void {
   for (const win of [petWindow, panelWindow]) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
   }
+}
+
+/**
+ * The pet's eyes follow the mouse across the whole screen, not just while it
+ * is over the pet: being noticed is most of what makes it feel alive. The
+ * renderer cannot see the global cursor, so main samples it and sends only
+ * changes, and only while the pet is on screen.
+ */
+function followCursor(): void {
+  let last = ''
+  const timer = setInterval(() => {
+    if (!petWindow || petWindow.isDestroyed()) return clearInterval(timer)
+    if (!petWindow.isVisible()) return
+    const at = screen.getCursorScreenPoint()
+    const b = petWindow.getBounds()
+    const dx = Math.round(at.x - (b.x + b.width / 2))
+    const dy = Math.round(at.y - (b.y + b.height * 0.62))
+    const key = `${dx},${dy}`
+    if (key === last) return
+    last = key
+    petWindow.webContents.send(IPC.onCursor, { dx, dy })
+  }, 60)
 }
 
 function setPetState(state: PetState): void {
@@ -328,9 +353,26 @@ function showPanel(): void {
     broadcastPanelState()
   } else if (settings.panelX < 0 || settings.panelY < 0) {
     if (petWindow) positionPanelNearPet(panelWindow, petWindow)
+  } else if (!panelWindow.isVisible()) {
+    placeOnActiveDisplay(panelWindow, { x: settings.panelX, y: settings.panelY })
   }
-  panelWindow.show()
+  // Kibu is a menu-bar accessory, so it is almost never the active app when
+  // you click the pet or press the shortcut. Take focus explicitly, or the
+  // panel can open behind the app you were in with the keyboard still there.
+  if (process.platform === 'darwin') app.focus({ steal: true })
+  if (panelWindow.isVisible()) panelWindow.show()
+  else fadeIn(panelWindow)
+  panelWindow.moveTop()
   panelWindow.focus()
+}
+
+/** Forgets where the panel was dragged and puts it back in the default spot. */
+function recenterPanel(): void {
+  if (!panelWindow || panelWindow.isDestroyed()) return
+  if (isPanelDocked()) { togglePanelDock(panelWindow); broadcastPanelState() }
+  if (!panelWindow.isVisible()) { panelWindow.show(); panelWindow.focus() }
+  centerPanel(panelWindow)
+  saveSettings({ panelX: -1, panelY: -1 })
 }
 
 /** Puts the panel away. A hidden panel is never a docked one. */
@@ -375,6 +417,7 @@ function createTray(): void {
     Menu.buildFromTemplate([
       { label: 'Open Kibu', accelerator: settings.shortcut, click: () => togglePanel(true) },
       { label: 'Bring pet back into view', click: () => recentrePet() },
+      { label: 'Center the panel', click: () => recenterPanel() },
       { type: 'separator' },
       {
         label: 'Stop current task',
@@ -550,10 +593,42 @@ function registerIpc(): void {
     resizePanel(panelWindow, height)
   })
   ipcMain.handle(IPC.panelClose, () => hidePanel())
+  ipcMain.handle(IPC.panelCenter, () => recenterPanel())
+
+  // The panel is moved by grabbing any empty part of it. CSS drag regions
+  // proved unreliable on a transparent frameless window, so the move is done
+  // here: remember where the window and cursor were when the grab began, and
+  // follow the real cursor from then on.
+  let grab: { cx: number; cy: number; x: number; y: number } | null = null
+  ipcMain.handle(IPC.panelDrag, (_e, phase: unknown) => {
+    if (!panelWindow || panelWindow.isDestroyed() || isPanelDocked()) return
+    const cursor = screen.getCursorScreenPoint()
+    if (phase === 'start') {
+      const [x = 0, y = 0] = panelWindow.getPosition()
+      grab = { cx: cursor.x, cy: cursor.y, x, y }
+      return
+    }
+    if (!grab) return
+    if (phase === 'move') {
+      panelWindow.setPosition(grab.x + cursor.x - grab.cx, grab.y + cursor.y - grab.cy, false)
+      return
+    }
+    if (phase === 'end') {
+      grab = null
+      const [x = -1, y = -1] = panelWindow.getPosition()
+      saveSettings({ panelX: x, panelY: y })
+    }
+  })
   ipcMain.handle(IPC.panelMinimize, () => {
     if (!panelWindow || panelWindow.isDestroyed()) return
     togglePanelDock(panelWindow)
     broadcastPanelState()
+    // Coming back from the edge means "I want to type": hand over focus.
+    if (!isPanelDocked()) {
+      if (process.platform === 'darwin') app.focus({ steal: true })
+      panelWindow.focus()
+      panelWindow.webContents.send(IPC.onFocusInput)
+    }
   })
   ipcMain.handle(IPC.panelPin, (_e, value: unknown) => {
     if (!panelWindow || panelWindow.isDestroyed()) return
@@ -563,6 +638,14 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.panelStateGet, () => ({ docked: isPanelDocked(), pinned: isPanelPinned() }))
   ipcMain.handle(IPC.petClicked, () => togglePanel(true))
+  // A bubble suggestion: open the panel with the words typed in, never sent.
+  ipcMain.handle(IPC.petCompose, (_e, text: unknown) => {
+    if (typeof text !== 'string' || !panelWindow || panelWindow.isDestroyed()) return
+    togglePanelShow()
+    // Empty means "just open": never wipe a half-typed draft.
+    if (text) panelWindow.webContents.send(IPC.onSeed, text.slice(0, 500))
+    panelWindow.webContents.send(IPC.onFocusInput)
+  })
   ipcMain.handle(IPC.petInteractive, (_e, v: unknown) => setPetInteractive(petWindow, !!v))
 
   ipcMain.handle(IPC.petDrag, (_e, delta: { dx: number; dy: number }) => {
@@ -689,6 +772,7 @@ if (!singleInstance) {
       const [x = -1, y = -1] = petWindow!.getPosition()
       saveSettings({ petX: x, petY: y })
     })
+    followCursor()
 
     panelWindow = createPanelWindow(
       { preload: p.preload, rendererUrl: RENDERER_URL, rendererFile: p.rendererFile },

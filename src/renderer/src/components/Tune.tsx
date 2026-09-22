@@ -79,6 +79,7 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
         <details className="setting-section"><summary>Preferences</summary>
           <label className="habit"><span>Fast file workflows</span><input type="checkbox" checked={settings.workflowsFirst} onChange={(e) => void update({ workflowsFirst: e.target.checked })} /></label>
           <label className="habit"><span>Jev decisions</span><input type="checkbox" checked={settings.jevEnabled} onChange={(e) => void update({ jevEnabled: e.target.checked })} /></label>
+          <label className="habit"><span>Little chats from Kibu</span><input type="checkbox" checked={settings.chatty} onChange={(e) => void update({ chatty: e.target.checked })} /></label>
           <label className="habit"><span>Confirm every action</span><input type="checkbox" checked={settings.confirmEveryAction} onChange={(e) => void update({ confirmEveryAction: e.target.checked })} /></label>
           <label className="row"><span>Budget / task ($)</span><input type="number" min={0.1} step={0.25} defaultValue={settings.maxUsdPerTask} onBlur={(e) => { const value = Number(e.target.value); if (Number.isFinite(value) && value >= 0.1) void update({ maxUsdPerTask: value }); else e.target.value = String(settings.maxUsdPerTask) }} /></label>
           <label className="row"><span>Shortcut</span><input defaultValue={settings.shortcut} onBlur={(e) => { if (e.target.value.trim()) void update({ shortcut: e.target.value }) }} /></label>

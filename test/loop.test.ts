@@ -274,3 +274,12 @@ describe('crash recovery', () => {
     assert.equal(store.getTask('done-task')!.status, 'succeeded')
   })
 })
+
+test('a narrated non-answer is recognised, a real answer is not', async () => {
+  const { isNarration } = await import('../src/runtime/loop/task-runner.js')
+  assert.equal(isNarration('Answering directly, no actions needed.'), true)
+  assert.equal(isNarration('No actions needed.'), true)
+  assert.equal(isNarration("I'm answering from what I know."), true)
+  assert.equal(isNarration('Not yet — I remember your recent tasks in History, but nothing long-term.'), false)
+  assert.equal(isNarration('Yes. No tools needed for that, though: just press ⌘⇧K.'), false)
+})

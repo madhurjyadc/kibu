@@ -9,6 +9,7 @@ export const COMMANDS = [
   { name: 'steps', hint: 'Task details' },
   { name: 'past', hint: 'History' },
   { name: 'stop', hint: 'Stop task' },
+  { name: 'center', hint: 'Move the panel back to the middle' },
   { name: 'keys', hint: 'Connections' },
   { name: 'tune', hint: 'Settings' },
   { name: 'bench', hint: 'Diagnostics' },
@@ -33,6 +34,8 @@ interface Props {
   /** Returns true when the digit was consumed (e.g. picking an answer). */
   onNumber?(n: number): boolean
   onEscape(): void
+  /** The draft as it is typed, so the creature can react to it. */
+  onDraft?(text: string): void
 }
 
 /** A persistent composer: preserve drafts on failure and support answers as well as new tasks. */
@@ -48,7 +51,8 @@ export function Prompt({
   onSend,
   onCommand,
   onNumber,
-  onEscape
+  onEscape,
+  onDraft
 }: Props): React.JSX.Element {
   const [text, setText] = useState('')
   const [pick, setPick] = useState(0)
@@ -73,6 +77,8 @@ export function Prompt({
   useEffect(() => {
     if (seed) { setText(seed.text); setError(null); ref.current?.focus() }
   }, [seed])
+
+  useEffect(() => { onDraft?.(text) }, [text, onDraft])
 
   // The line grows with what is being typed instead of scrolling.
   useEffect(() => {

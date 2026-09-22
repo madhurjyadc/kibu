@@ -29,12 +29,12 @@ await page.addInitScript(() => {
     deleteTask: async (id) => { state.calls.push(['delete', id]); state.history = state.history.filter((r) => r.id !== id); window.__test.emit('deleted', [id]) },
     clearHistory: async () => { const ids = state.history.filter((r) => ['succeeded', 'failed', 'cancelled'].includes(r.status)).map((r) => r.id); state.history = state.history.filter((r) => !ids.includes(r.id)); state.calls.push(['clear']); window.__test.emit('deleted', ids) },
     answerQuestion: async (req) => state.calls.push(['answer', req]), closePanel: async () => {},
-    onHistoryDeleted: sub('deleted'), onTaskUpdate: sub('task'), onLog: sub('log'), onDroppedPaths: sub('drop'), onPetState: sub('pet'), onDesktopSession: sub('desktop'), onFocusInput: sub('focus'), onPanelState: sub('panel'),
+    onHistoryDeleted: sub('deleted'), onTaskUpdate: sub('task'), onLog: sub('log'), onDroppedPaths: sub('drop'), onPetState: sub('pet'), onDesktopSession: sub('desktop'), onFocusInput: sub('focus'), onPanelState: sub('panel'), onSeed: sub('seed'), petCompose: async () => {},
     getSettings: async () => state.settings, setSettings: async (next) => Object.assign(state.settings, next), hasApiKey: async () => false, hasJevKey: async () => false, hasClaudeCode: async () => true,
     setApiKey: async () => { state.calls.push(['key']); state.ready = true; return true }, setJevKey: async () => true,
     requestPermission: async () => {}, resizePanel: async () => {}, pauseTask: async (id) => state.calls.push(['pause', id]), resumeTask: async () => {}, cancelTask: async (id) => state.calls.push(['cancel', id]),
     getTask: async () => state.task, undoTask: async () => ({ reversed: 2, skipped: [] }), stopDesktopSession: async () => {},
-    openUrl: async (url) => state.calls.push(['url', url]), openPath: async () => {}, revealPath: async () => {}, getPathForFile: () => '/test/file.txt', runBench: async () => []
+    openUrl: async (url) => state.calls.push(['url', url]), dragPanel: async (phase) => state.calls.push(['drag', phase]), centerPanel: async () => state.calls.push(['center']), openPath: async () => {}, revealPath: async () => {}, getPathForFile: () => '/test/file.txt', runBench: async () => []
   }
 })
 const task = {
@@ -129,9 +129,9 @@ try {
   await page.locator('#composer').fill('Half-written thought')
   await page.getByRole('button', { name: 'Keep in front' }).click()
   await page.waitForFunction(() => window.__test.state.panel.pinned === true)
-  await page.getByRole('button', { name: 'Minimize to the edge' }).click()
+  await page.getByRole('button', { name: 'Minimize to island' }).click()
   await page.locator('.kibu.is-docked').waitFor()
-  await page.setViewportSize({ width: 54, height: 128 })
+  await page.setViewportSize({ width: 300, height: 46 })
   await page.screenshot({ path: `${artifacts}/docked.png` })
   await page.getByRole('button', { name: 'Open Kibu', exact: true }).click()
   await page.waitForFunction(() => !document.querySelector('.kibu').classList.contains('is-docked'))
@@ -139,11 +139,27 @@ try {
   assert.equal(await page.locator('#composer').inputValue(), 'Half-written thought', 'Collapsing to the edge must not lose a draft')
   await page.locator('#composer').fill('')
 
+  // Moving like Spotlight: pressing empty space drags the window; pressing a
+  // control or the text box never does.
+  await page.evaluate(() => { window.__test.state.calls = [] })
+  const box = await page.locator('.statusbar').boundingBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 40, box.y + 10); await page.mouse.up()
+  const phases = await page.evaluate(() => window.__test.state.calls.filter((c) => c[0] === 'drag').map((c) => c[1]))
+  assert.equal(phases[0], 'start'); assert.ok(phases.includes('move')); assert.equal(phases.at(-1), 'end')
+  await page.evaluate(() => { window.__test.state.calls = [] })
+  await page.locator('#composer').click()
+  await page.getByRole('button', { name: 'History', exact: true }).click()
+  await page.getByRole('button', { name: 'Back home' }).click()
+  assert.equal(await page.evaluate(() => window.__test.state.calls.some((c) => c[0] === 'drag')), false, 'Controls and the text box must not move the window')
+  await page.locator('.bar-face').dblclick()
+  assert.equal(await page.evaluate(() => window.__test.state.calls.some((c) => c[0] === 'center')), true, 'Double-clicking empty space re-centres')
+
   await page.setViewportSize({ width: 420, height: 360 })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   assert.equal(await page.getByRole('button', { name: 'Send task', exact: true }).isVisible(), true)
   await page.screenshot({ path: `${artifacts}/compact.png` })
   assert.deepEqual(errors, [], 'No renderer exceptions')
-  console.log('Renderer checks passed: minimal home, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the edge, compact layout.')
+  console.log('Renderer checks passed: minimal home, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the island and back, drag to move, compact layout.')
   console.log(`Screenshots: ${artifacts}`)
 } finally { await browser.close(); await server.close() }

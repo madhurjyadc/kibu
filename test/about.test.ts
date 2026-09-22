@@ -14,7 +14,10 @@ test('questions about Kibu are recognised, including sloppy ones', () => {
     'who are you?',
     'What do you do?',
     'hey, wat can u do',
-    'help'
+    'help',
+    'what can you do bro?',
+    'what can you do lol?',
+    'what can you do for me, kibu?'
   ]) {
     assert.equal(isAboutKibu(q), true, q)
   }
@@ -25,7 +28,8 @@ test('real work is not mistaken for a question about Kibu', () => {
     'tidy up my Downloads',
     'find the invoice I saved yesterday',
     'help me rename these screenshots so they are sorted by date',
-    'what can you do about the mess in my Downloads folder, there are hundreds of files in there'
+    'what can you do about the mess in my Downloads folder, there are hundreds of files in there',
+    'what can you do for me in Figma bro'
   ]) {
     assert.equal(isAboutKibu(q), false, q)
   }

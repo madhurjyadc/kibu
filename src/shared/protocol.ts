@@ -82,13 +82,18 @@ export const IPC = {
   desktopStop: 'desktop:stop',
   frontWindowGet: 'window:front',
   // main -> renderer (send)
+  panelCenter: 'panel:center',
+  panelDrag: 'panel:drag',
+  petCompose: 'pet:compose',
+  onSeed: 'panel:seed',
   onTaskUpdate: 'task:update',
   onPetState: 'pet:state',
   onLog: 'task:log',
   onDroppedPaths: 'pet:dropped',
   onFocusInput: 'panel:focus-input',
   onPanelState: 'panel:state',
-  onDesktopSession: 'desktop:session'
+  onDesktopSession: 'desktop:session',
+  onCursor: 'pet:cursor'
 } as const
 
 /* ------------------------------------------------------------------ *
@@ -239,6 +244,17 @@ export interface KibuBridge {
   openUrl(url: string): Promise<void>
   resizePanel(height: number): Promise<void>
   closePanel(): Promise<void>
+  /** Puts the panel back in its default spot and forgets where it was dragged. */
+  centerPanel(): Promise<void>
+  /**
+   * Moves the panel with the mouse. The renderer only reports the phase; main
+   * reads the real cursor position, so fast drags never drift or lag behind.
+   */
+  dragPanel(phase: 'start' | 'move' | 'end'): Promise<void>
+  /** Opens the panel with a request typed in but not sent, e.g. from a bubble suggestion. */
+  petCompose(text: string): Promise<void>
+  /** A request to place in the composer without sending it. */
+  onSeed(cb: (text: string) => void): () => void
   /** Collapses the panel to the edge handle, or opens it back out. */
   minimizePanel(): Promise<void>
   /** Whether the panel should float above other applications. */
@@ -258,6 +274,8 @@ export interface KibuBridge {
   onFocusInput(cb: () => void): () => void
   onPanelState(cb: (state: PanelState) => void): () => void
   onDesktopSession(cb: (active: boolean) => void): () => void
+  /** Where the mouse is, relative to the pet window's centre, in points. */
+  onCursor(cb: (at: { dx: number; dy: number }) => void): () => void
 }
 
 export interface UndoReport {
@@ -296,6 +314,8 @@ export interface Settings {
   workflowsFirst: boolean
   /** Ask before every action, even inside an existing authorization. */
   confirmEveryAction: boolean
+  /** Little unprompted remarks from the pet: greetings, check-ins, the odd question. */
+  chatty: boolean
   /**
    * Use the locally installed Claude Code as the planning model instead of an
    * Anthropic API key. For running Kibu on your own machine with your own
@@ -319,6 +339,7 @@ export const DEFAULT_SETTINGS: Settings = {
   jevEnabled: true,
   workflowsFirst: true,
   confirmEveryAction: false,
+  chatty: true,
   useClaudeCode: false,
   claudeCodeModel: 'sonnet',
   petX: -1,

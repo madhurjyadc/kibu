@@ -19,7 +19,9 @@ const QUESTION = String.raw`(?:(?:what|wat|who)\s+(?:can|do|are|r)\s+(?:u|you|ki
  * "help me rename these screenshots" is a job, and so is "what can you do
  * about the mess in my Downloads". Matching loosely would swallow both.
  */
-const ABOUT = new RegExp(`^${GREETING}${QUESTION}\\s*[?!.]*$`, 'i')
+/** The way people actually finish the question: "what can you do bro?", "…for me lol". */
+const TAIL = String.raw`(?:\s+for\s+me)?(?:[\s,]+(?:bro|bruh|man|dude|buddy|mate|kibu|lol|lmao|haha|pls|please|exactly|again))*`
+const ABOUT = new RegExp(`^${GREETING}${QUESTION}${TAIL}\\s*[?!.]*$`, 'i')
 
 export function isAboutKibu(request: string): boolean {
   return ABOUT.test(request.trim())
