@@ -4,6 +4,7 @@ import type {
   AnswerQuestionRequest,
   KibuBridge,
   LogEntry,
+  PanelState,
   PetState,
   Settings,
   StartTaskRequest,
@@ -52,7 +53,9 @@ const bridge: KibuBridge & { getPathForFile(file: File): string } = {
   openUrl: (url) => ipcRenderer.invoke(IPC.openUrl, url),
   resizePanel: (h) => ipcRenderer.invoke(IPC.panelResize, h),
   closePanel: () => ipcRenderer.invoke(IPC.panelClose),
-  setSticky: (sticky: boolean) => ipcRenderer.invoke(IPC.panelSticky, sticky),
+  minimizePanel: () => ipcRenderer.invoke(IPC.panelMinimize),
+  pinPanel: (pinned: boolean) => ipcRenderer.invoke(IPC.panelPin, pinned),
+  getPanelState: () => ipcRenderer.invoke(IPC.panelStateGet),
   petClicked: () => ipcRenderer.invoke(IPC.petClicked),
   setPetInteractive: (v: boolean) => ipcRenderer.invoke(IPC.petInteractive, v),
   dragPet: (dx: number, dy: number) => ipcRenderer.invoke(IPC.petDrag, { dx, dy }),
@@ -65,6 +68,7 @@ const bridge: KibuBridge & { getPathForFile(file: File): string } = {
   onLog: (cb) => subscribe<LogEntry>(IPC.onLog, cb),
   onDroppedPaths: (cb) => subscribe<string[]>(IPC.onDroppedPaths, cb),
   onFocusInput: (cb) => subscribe<void>(IPC.onFocusInput, () => cb()),
+  onPanelState: (cb) => subscribe<PanelState>(IPC.onPanelState, cb),
   onDesktopSession: (cb) => subscribe<boolean>(IPC.onDesktopSession, cb),
 
   // Electron no longer exposes File.path; this is the supported replacement

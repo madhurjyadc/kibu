@@ -32,8 +32,6 @@ interface Props {
   onCommand(name: string): void
   /** Returns true when the digit was consumed (e.g. picking an answer). */
   onNumber?(n: number): boolean
-  /** Lets the panel get out of the way while somebody is mid-sentence. */
-  onDraft?(active: boolean): void
   onEscape(): void
 }
 
@@ -50,7 +48,6 @@ export function Prompt({
   onSend,
   onCommand,
   onNumber,
-  onDraft,
   onEscape
 }: Props): React.JSX.Element {
   const [text, setText] = useState('')
@@ -72,10 +69,6 @@ export function Prompt({
   useEffect(() => {
     setPick(0)
   }, [query])
-
-  useEffect(() => {
-    onDraft?.(text.length > 0)
-  }, [text, onDraft])
 
   useEffect(() => {
     if (seed) { setText(seed.text); setError(null); ref.current?.focus() }

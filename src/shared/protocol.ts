@@ -72,7 +72,9 @@ export const IPC = {
   openUrl: 'shell:open-url',
   panelResize: 'panel:resize',
   panelClose: 'panel:close',
-  panelSticky: 'panel:sticky',
+  panelMinimize: 'panel:minimize',
+  panelPin: 'panel:pin',
+  panelStateGet: 'panel:state-get',
   petDrag: 'pet:drag',
   petDropped: 'pet:dropped-paths',
   petClicked: 'pet:clicked',
@@ -85,6 +87,7 @@ export const IPC = {
   onLog: 'task:log',
   onDroppedPaths: 'pet:dropped',
   onFocusInput: 'panel:focus-input',
+  onPanelState: 'panel:state',
   onDesktopSession: 'desktop:session'
 } as const
 
@@ -235,9 +238,12 @@ export interface KibuBridge {
   openPath(p: string): Promise<void>
   openUrl(url: string): Promise<void>
   resizePanel(height: number): Promise<void>
-  /** Tells the host whether losing focus should dismiss the panel. */
-  setSticky(sticky: boolean): Promise<void>
   closePanel(): Promise<void>
+  /** Collapses the panel to the edge handle, or opens it back out. */
+  minimizePanel(): Promise<void>
+  /** Whether the panel should float above other applications. */
+  pinPanel(pinned: boolean): Promise<void>
+  getPanelState(): Promise<PanelState>
   petClicked(): Promise<void>
   /** Whether the pet should currently catch the mouse, or let it pass through. */
   setPetInteractive(interactive: boolean): Promise<void>
@@ -250,6 +256,7 @@ export interface KibuBridge {
   onLog(cb: (e: LogEntry) => void): () => void
   onDroppedPaths(cb: (paths: string[]) => void): () => void
   onFocusInput(cb: () => void): () => void
+  onPanelState(cb: (state: PanelState) => void): () => void
   onDesktopSession(cb: (active: boolean) => void): () => void
 }
 
@@ -265,6 +272,14 @@ export interface TaskSummaryRow {
   headline: string
   createdAt: number
   undoable: boolean
+}
+
+/** What the panel window is currently doing, as the renderer needs to know it. */
+export interface PanelState {
+  /** Collapsed to the handle on the right edge of the screen. */
+  docked: boolean
+  /** Floating above other applications. */
+  pinned: boolean
 }
 
 export interface Settings {
@@ -291,6 +306,11 @@ export interface Settings {
   claudeCodeModel: string
   petX: number
   petY: number
+  /** Where the user last left the panel; -1 means it has never been placed. */
+  panelX: number
+  panelY: number
+  /** Whether the panel floats above other applications. */
+  panelPinned: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -302,7 +322,10 @@ export const DEFAULT_SETTINGS: Settings = {
   useClaudeCode: false,
   claudeCodeModel: 'sonnet',
   petX: -1,
-  petY: -1
+  petY: -1,
+  panelX: -1,
+  panelY: -1,
+  panelPinned: false
 }
 
 export type {

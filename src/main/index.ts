@@ -13,9 +13,13 @@ import { createPetWindow, setPetInteractive } from './windows/pet.js'
 import {
   createPanelWindow,
   positionPanelNearPet,
-  setPanelSticky,
-  PANEL_MIN_HEIGHT,
-  PANEL_MAX_HEIGHT
+  resizePanel,
+  setPanelPinned,
+  togglePanelDock,
+  resetPanelDock,
+  isPanelDocked,
+  isPanelPinned,
+  isPanelAnimating
 } from './windows/panel.js'
 import { createOsAdapter } from '../os/index.js'
 import { IPC, DEFAULT_MODEL_CONFIG, DEFAULT_SETTINGS } from '../shared/protocol.js'
@@ -280,15 +284,20 @@ function togglePanel(focusInput = true): void {
   if (!panelWindow || panelWindow.isDestroyed()) return
   if (!panelWindow.isVisible()) void captureFrontWindow()
   if (panelWindow.isVisible()) {
-    panelWindow.hide()
+    // Docked, the panel is a handle on the edge of the screen: the shortcut
+    // should open it out, not put it away.
+    if (isPanelDocked()) {
+      showPanel()
+      if (focusInput) panelWindow.webContents.send(IPC.onFocusInput)
+      return
+    }
+    hidePanel()
     if (!currentTask || ['succeeded', 'failed', 'cancelled'].includes(currentTask.status)) {
       setPetState('idle')
     }
     return
   }
-  if (petWindow) positionPanelNearPet(panelWindow, petWindow)
-  panelWindow.show()
-  panelWindow.focus()
+  showPanel()
   if (focusInput) panelWindow.webContents.send(IPC.onFocusInput)
   // The pet looks up when the panel is open and nothing is running.
   if (!currentTask || ['succeeded', 'failed', 'cancelled'].includes(currentTask.status)) {
@@ -300,9 +309,40 @@ function togglePanel(focusInput = true): void {
 function togglePanelShow(): void {
   if (!panelWindow || panelWindow.isDestroyed()) return
   if (!panelWindow.isVisible()) void captureFrontWindow()
-  if (petWindow) positionPanelNearPet(panelWindow, petWindow)
+  showPanel()
+}
+
+/**
+ * Brings the panel forward, open and where the user left it.
+ *
+ * A panel that re-centres itself every time it appears cannot be put
+ * anywhere, so the pet only decides the placement until the user first drags
+ * the window; after that the saved position is the only thing consulted.
+ */
+function showPanel(): void {
+  if (!panelWindow || panelWindow.isDestroyed()) return
+  if (isPanelDocked()) {
+    // Opening from the tray or the shortcut means the user wants the panel,
+    // not the handle they tucked away.
+    togglePanelDock(panelWindow)
+    broadcastPanelState()
+  } else if (settings.panelX < 0 || settings.panelY < 0) {
+    if (petWindow) positionPanelNearPet(panelWindow, petWindow)
+  }
   panelWindow.show()
   panelWindow.focus()
+}
+
+/** Puts the panel away. A hidden panel is never a docked one. */
+function hidePanel(): void {
+  if (!panelWindow || panelWindow.isDestroyed()) return
+  panelWindow.hide()
+  resetPanelDock(panelWindow)
+  broadcastPanelState()
+}
+
+function broadcastPanelState(): void {
+  broadcast(IPC.onPanelState, { docked: isPanelDocked(), pinned: isPanelPinned() })
 }
 
 function registerShortcut(accelerator: string): boolean {
@@ -507,13 +547,21 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.panelResize, (_e, height: number) => {
     if (!panelWindow || panelWindow.isDestroyed()) return
-    const clamped = Math.max(PANEL_MIN_HEIGHT, Math.min(PANEL_MAX_HEIGHT, Math.round(height)))
-    const bounds = panelWindow.getBounds()
-    panelWindow.setBounds({ ...bounds, height: clamped }, false)
-    if (petWindow) positionPanelNearPet(panelWindow, petWindow)
+    resizePanel(panelWindow, height)
   })
-  ipcMain.handle(IPC.panelClose, () => panelWindow?.hide())
-  ipcMain.handle(IPC.panelSticky, (_e, value: unknown) => setPanelSticky(!!value))
+  ipcMain.handle(IPC.panelClose, () => hidePanel())
+  ipcMain.handle(IPC.panelMinimize, () => {
+    if (!panelWindow || panelWindow.isDestroyed()) return
+    togglePanelDock(panelWindow)
+    broadcastPanelState()
+  })
+  ipcMain.handle(IPC.panelPin, (_e, value: unknown) => {
+    if (!panelWindow || panelWindow.isDestroyed()) return
+    setPanelPinned(panelWindow, !!value)
+    saveSettings({ panelPinned: !!value })
+    broadcastPanelState()
+  })
+  ipcMain.handle(IPC.panelStateGet, () => ({ docked: isPanelDocked(), pinned: isPanelPinned() }))
   ipcMain.handle(IPC.petClicked, () => togglePanel(true))
   ipcMain.handle(IPC.petInteractive, (_e, v: unknown) => setPetInteractive(petWindow, !!v))
 
@@ -642,7 +690,17 @@ if (!singleInstance) {
       saveSettings({ petX: x, petY: y })
     })
 
-    panelWindow = createPanelWindow({ preload: p.preload, rendererUrl: RENDERER_URL, rendererFile: p.rendererFile })
+    panelWindow = createPanelWindow(
+      { preload: p.preload, rendererUrl: RENDERER_URL, rendererFile: p.rendererFile },
+      { x: settings.panelX, y: settings.panelY, pinned: settings.panelPinned }
+    )
+    panelWindow.on('moved', () => {
+      // Only a panel the user dragged is worth remembering; the docked handle
+      // and the open/close animations place themselves.
+      if (!panelWindow || isPanelDocked() || isPanelAnimating() || !panelWindow.isVisible()) return
+      const [x = -1, y = -1] = panelWindow.getPosition()
+      saveSettings({ panelX: x, panelY: y })
+    })
 
     createTray()
     if (!registerShortcut(settings.shortcut)) {

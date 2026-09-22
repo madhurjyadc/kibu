@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { BenchRow, FrontWindow, LogEntry, PetState, TaskState, TaskSummaryRow, UserQuestion } from '../../shared/protocol.js'
+import type { BenchRow, FrontWindow, LogEntry, PanelState, PetState, TaskState, TaskSummaryRow, UserQuestion } from '../../shared/protocol.js'
 import { COMMANDS, Prompt } from './components/Prompt.js'
 import { Reply } from './components/Reply.js'
 import { Steps } from './components/Steps.js'
@@ -29,15 +29,14 @@ export function Panel(): React.JSX.Element {
   const [front, setFront] = useState<FrontWindow | null>(null)
   const [desktopActive, setDesktopActive] = useState(false)
   const [aside, setAside] = useState<string | null>(null)
-  const [drafting, setDrafting] = useState(false)
   const [blind, setBlind] = useState(false)
   const [bench, setBench] = useState<BenchRow[]>([])
   const [benching, setBenching] = useState(false)
   const [seed, setSeed] = useState<{ text: string; id: number } | null>(null)
   const [dragging, setDragging] = useState(false)
-  const [choosing, setChoosing] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [panel, setPanel] = useState<PanelState>({ docked: false, pinned: false })
   const sending = useRef(false)
   const workspace = useRef<HTMLElement>(null)
   const running = !!task && RUNNING.includes(task.status)
@@ -62,6 +61,8 @@ export function Panel(): React.JSX.Element {
     const offLog = window.kibu.onLog((entry) => setLogs((prev) => [...prev.slice(-199), entry]))
     const offDropped = window.kibu.onDroppedPaths((paths) => { setDropped(paths); setView('home') })
     const offPet = window.kibu.onPetState(setPetState)
+    const offPanel = window.kibu.onPanelState(setPanel)
+    void window.kibu.getPanelState().then(setPanel).catch(() => {})
     const offDesktop = window.kibu.onDesktopSession(setDesktopActive)
     const onFocus = (): void => {
       void refreshSetup().catch(reportError)
@@ -74,14 +75,10 @@ export function Panel(): React.JSX.Element {
     onFocus()
     void refreshHistory().catch(reportError)
     window.addEventListener('focus', onFocus)
-    return () => { offDeleted(); offTask(); offLog(); offDropped(); offPet(); offDesktop(); offFocus(); window.removeEventListener('focus', onFocus) }
+    return () => { offDeleted(); offTask(); offLog(); offDropped(); offPet(); offPanel(); offDesktop(); offFocus(); window.removeEventListener('focus', onFocus) }
   }, [refreshHistory, refreshSetup, reportError])
 
-  useEffect(() => {
-    void window.kibu.setSticky(view !== 'home' || running || !!task || !!aside || desktopActive || drafting || choosing || dropped.length > 0)
-  }, [view, running, task, aside, desktopActive, drafting, choosing, dropped])
-
-  useEffect(() => { void window.kibu.resizePanel(view === 'home' && !task ? 440 : 620) }, [view, task?.id])
+  useEffect(() => { void window.kibu.resizePanel(view === 'home' && !task ? 440 : 620) }, [view, task?.id, panel.docked])
   useEffect(() => { setConfirmClear(false); setConfirmDelete(false); workspace.current?.scrollTo({ top: 0 }) }, [view, task?.id, task?.question?.id])
 
   const answer = useCallback(async (question: UserQuestion, optionId: string | null, text?: string) => {
@@ -147,7 +144,7 @@ export function Panel(): React.JSX.Element {
   const placeholder = task?.question ? (task.question.allowFreeText ? 'Your answer…' : 'Choose an option') : running ? 'Working…' : dropped.length ? 'What should I do with these?' : 'Ask Kibu…'
 
   return (
-    <div className={`kibu ${dragging ? 'is-dropping' : ''}`}
+    <div className={`kibu ${dragging ? 'is-dropping' : ''} ${panel.docked ? 'is-docked' : ''}`}
       onKeyDown={(e) => {
         if (e.key === 'Escape' && e.target instanceof HTMLElement && !['TEXTAREA', 'INPUT'].includes(e.target.tagName)) {
           if (view !== 'home') setView('home'); else void window.kibu.closePanel()
@@ -166,6 +163,8 @@ export function Panel(): React.JSX.Element {
           <button className={`icon-button ${view === 'past' ? 'selected' : ''}`} aria-label="History" title="History" onClick={() => void command('past')}><Icon name="clock" /></button>
           <button className={`icon-button ${view === 'tune' ? 'selected' : ''}`} aria-label="Settings" title={hasKey === false ? "Settings · connect a model for app and browser tasks" : "Settings"} onClick={() => setView('tune')}><Icon name="settings" />{hasKey === false && <i className="connection-dot" />}</button>
           <button className="icon-button" aria-label="Help" title="Help" onClick={() => setView('help')}><Icon name="help" /></button>
+          <button className={`icon-button ${panel.pinned ? 'selected' : ''}`} aria-label="Keep in front" aria-pressed={panel.pinned} title={panel.pinned ? 'Keep in front: on — click to let other apps cover Kibu' : 'Keep in front: off — other apps can cover Kibu'} onClick={() => void window.kibu.pinPanel(!panel.pinned)}><Icon name="pin" /></button>
+          <button className="icon-button" aria-label="Minimize to the edge" title="Minimize to the edge" onClick={() => void window.kibu.minimizePanel()}><Icon name="minimize" /></button>
           <button className="icon-button" aria-label="Hide Kibu" title="Hide" onClick={() => void window.kibu.closePanel()}><Icon name="close" /></button>
         </nav>
       </header>
@@ -196,11 +195,15 @@ export function Panel(): React.JSX.Element {
       {running && view !== 'home' && <button className="return-task" onClick={() => setView('home')}><span className="pulse" />{task?.status === 'awaiting_user' ? 'Your input needed' : 'Task in progress'}<Icon name="arrow" size={15} /></button>}
       <footer className="composer-dock">
         <Prompt state={petState} placeholder={placeholder} busy={running} canAnswer={!!task?.question?.allowFreeText} seed={seed} dropped={dropped} front={front}
-          onAttach={async () => { setChoosing(true); try { await window.kibu.setSticky(true); const paths = await window.kibu.choosePaths(); setDropped((prev) => [...new Set([...prev, ...paths])].slice(0, 200)) } catch (e) { reportError(e) } finally { setChoosing(false) } }}
+          onAttach={async () => { try { const paths = await window.kibu.choosePaths(); setDropped((prev) => [...new Set([...prev, ...paths])].slice(0, 200)) } catch (e) { reportError(e) } }}
           onClearDropped={() => setDropped([])} onSend={send} onCommand={command}
           onNumber={(n) => { const q = task?.question; if (!q || view !== 'home') return false; const option = (q.options ?? [{ id: 'ok', label: 'Go ahead' }])[n - 1]; if (!option) return false; void answer(q, option.id).catch(reportError); return true }}
-          onDraft={setDrafting} onEscape={() => view === 'home' ? void window.kibu.closePanel() : setView('home')} />
+          onEscape={() => view === 'home' ? void window.kibu.closePanel() : setView('home')} />
       </footer>
+      <button className="edge-tab" aria-label="Open Kibu" title="Open Kibu" tabIndex={panel.docked ? 0 : -1} aria-hidden={!panel.docked} onClick={() => void window.kibu.minimizePanel()}>
+        <Sprite state={running ? petState : 'idle'} size={34} quiet={!running} />
+        {running && <span className="pulse" />}
+      </button>
       {dragging && <div className="drop-overlay"><Icon name="attach" size={30} /><strong>Drop files</strong></div>}
     </div>
   )

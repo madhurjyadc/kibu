@@ -1,10 +1,12 @@
 import type { CSSProperties } from 'react'
 
-export type IconName = 'spark' | 'folder' | 'search' | 'rename' | 'clock' | 'settings' | 'arrow' | 'close' | 'plus' | 'screen' | 'check' | 'help' | 'trash' | 'attach' | 'back'
+export type IconName = 'spark' | 'folder' | 'search' | 'rename' | 'clock' | 'settings' | 'arrow' | 'close' | 'plus' | 'screen' | 'check' | 'help' | 'trash' | 'attach' | 'back' | 'pin' | 'minimize'
 const paths: Record<IconName, string> = {
   trash: 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
   attach: 'm8 13 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l9-9m-5 11 7-7',
   back: 'M19 12H5m6-6-6 6 6 6',
+  pin: 'M12 16v6M8.5 3h7l-1 5.5 3 3.5v1H6.5v-1l3-3.5L8.5 3Z',
+  minimize: 'M6 12h12',
   spark: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z',
   folder: 'M3 7V5h6l2 2h10v12H3V7Z M3 10h18',
   search: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13Zm5-2L21 21',

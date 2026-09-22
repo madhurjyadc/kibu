@@ -15,18 +15,21 @@ const artifacts = process.env.KIBU_SCREENSHOT_DIR || '/tmp/kibu-design'
 await mkdir(artifacts, { recursive: true })
 await page.addInitScript(() => {
   const listeners = {}
-  const state = { calls: [], history: [], failStart: false, ready: true, settings: { workflowsFirst: true, jevEnabled: true, confirmEveryAction: false, maxUsdPerTask: 1.5, shortcut: 'CommandOrControl+Shift+K', useClaudeCode: false } }
+  const state = { calls: [], history: [], failStart: false, ready: true, panel: { docked: false, pinned: false }, settings: { workflowsFirst: true, jevEnabled: true, confirmEveryAction: false, maxUsdPerTask: 1.5, shortcut: 'CommandOrControl+Shift+K', useClaudeCode: false } }
   window.__test = { state, emit: (event, payload) => (listeners[event] || []).forEach((f) => f(payload)) }
   const sub = (event) => (cb) => { (listeners[event] ||= []).push(cb); return () => { listeners[event] = listeners[event].filter((f) => f !== cb) } }
   window.kibu = {
     canWork: async () => state.ready, getPermissions: async () => [{ permission: 'accessibility', granted: false, purpose: 'Control native Mac apps when you ask.' }], listHistory: async () => state.history,
-    getFrontWindow: async () => ({ pid: 123, name: 'Finder', title: 'Downloads' }), setSticky: async (value) => state.calls.push(['sticky', value]),
+    getFrontWindow: async () => ({ pid: 123, name: 'Finder', title: 'Downloads' }),
+    getPanelState: async () => state.panel,
+    minimizePanel: async () => { state.panel = { ...state.panel, docked: !state.panel.docked }; state.calls.push(['minimize', state.panel.docked]); window.__test.emit('panel', state.panel) },
+    pinPanel: async (pinned) => { state.panel = { ...state.panel, pinned }; state.calls.push(['pin', pinned]); window.__test.emit('panel', state.panel) },
     startTask: async (req) => { if (state.failStart) throw new Error('Test connection unavailable'); state.calls.push(['start', req]) },
     choosePaths: async () => ['/test/selected.pdf'],
     deleteTask: async (id) => { state.calls.push(['delete', id]); state.history = state.history.filter((r) => r.id !== id); window.__test.emit('deleted', [id]) },
     clearHistory: async () => { const ids = state.history.filter((r) => ['succeeded', 'failed', 'cancelled'].includes(r.status)).map((r) => r.id); state.history = state.history.filter((r) => !ids.includes(r.id)); state.calls.push(['clear']); window.__test.emit('deleted', ids) },
     answerQuestion: async (req) => state.calls.push(['answer', req]), closePanel: async () => {},
-    onHistoryDeleted: sub('deleted'), onTaskUpdate: sub('task'), onLog: sub('log'), onDroppedPaths: sub('drop'), onPetState: sub('pet'), onDesktopSession: sub('desktop'), onFocusInput: sub('focus'),
+    onHistoryDeleted: sub('deleted'), onTaskUpdate: sub('task'), onLog: sub('log'), onDroppedPaths: sub('drop'), onPetState: sub('pet'), onDesktopSession: sub('desktop'), onFocusInput: sub('focus'), onPanelState: sub('panel'),
     getSettings: async () => state.settings, setSettings: async (next) => Object.assign(state.settings, next), hasApiKey: async () => false, hasJevKey: async () => false, hasClaudeCode: async () => true,
     setApiKey: async () => { state.calls.push(['key']); state.ready = true; return true }, setJevKey: async () => true,
     requestPermission: async () => {}, resizePanel: async () => {}, pauseTask: async (id) => state.calls.push(['pause', id]), resumeTask: async () => {}, cancelTask: async (id) => state.calls.push(['cancel', id]),
@@ -121,11 +124,26 @@ try {
   await page.getByRole('button', { name: 'Attach files', exact: true }).click()
   await page.getByText('selected.pdf', { exact: true }).waitFor()
   await page.getByRole('button', { name: 'Remove attached files' }).click()
+  // Staying put: pinning, collapsing to the edge handle, and opening back out
+  // without losing what was half-typed.
+  await page.locator('#composer').fill('Half-written thought')
+  await page.getByRole('button', { name: 'Keep in front' }).click()
+  await page.waitForFunction(() => window.__test.state.panel.pinned === true)
+  await page.getByRole('button', { name: 'Minimize to the edge' }).click()
+  await page.locator('.kibu.is-docked').waitFor()
+  await page.setViewportSize({ width: 54, height: 128 })
+  await page.screenshot({ path: `${artifacts}/docked.png` })
+  await page.getByRole('button', { name: 'Open Kibu', exact: true }).click()
+  await page.waitForFunction(() => !document.querySelector('.kibu').classList.contains('is-docked'))
+  await page.setViewportSize({ width: 620, height: 440 })
+  assert.equal(await page.locator('#composer').inputValue(), 'Half-written thought', 'Collapsing to the edge must not lose a draft')
+  await page.locator('#composer').fill('')
+
   await page.setViewportSize({ width: 420, height: 360 })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   assert.equal(await page.getByRole('button', { name: 'Send task', exact: true }).isVisible(), true)
   await page.screenshot({ path: `${artifacts}/compact.png` })
   assert.deepEqual(errors, [], 'No renderer exceptions')
-  console.log('Renderer checks passed: minimal home, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, compact layout.')
+  console.log('Renderer checks passed: minimal home, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the edge, compact layout.')
   console.log(`Screenshots: ${artifacts}`)
 } finally { await browser.close(); await server.close() }
