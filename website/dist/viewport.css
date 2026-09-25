@@ -1,0 +1,165 @@
+/* The opening composition fits the available screen, not a fixed design canvas.
+   Small viewport units account for mobile browser chrome. Content can still grow
+   naturally when the user enlarges text; nothing is cropped or scaled as a page. */
+:root { --header-height: clamp(64px, 10svh, 88px); }
+.site-header { height: var(--header-height); }
+.hero {
+  min-height: calc(100svh - var(--header-height));
+  padding-block: clamp(18px, 3.5svh, 40px);
+  gap: clamp(24px, 3vw, 56px);
+}
+h1 {
+  font-size: clamp(48px, min(6.2vw, 10svh), 90px);
+  letter-spacing: -.06em;
+}
+.hero-copy > .eyebrow { margin-bottom: clamp(12px, 2.5svh, 24px); }
+.intro { margin-block: clamp(14px, 2.5svh, 24px); font-size: 16px; }
+.primary-cta { padding: 14px 20px; }
+.availability { margin-top: 12px; }
+.demo-scene {
+  display: flex;
+  flex-direction: column;
+  height: clamp(410px, calc(100svh - var(--header-height) - 72px), 610px);
+  margin-top: 0;
+}
+.scene-top { flex: 0 0 auto; padding: 18px 20px 0; }
+.scene-top > span:first-child { max-width: none; }
+.desktop-stage { flex: 1 1 auto; height: auto; min-height: 0; margin-top: 12px; }
+.file-window { top: 12px; max-width: 350px; }
+.file-list { min-height: 202px; gap: 1px; padding: 9px 12px; }
+.file-row { padding-block: 5px; }
+.pet { top: 23%; right: 1%; width: min(40%, 245px); }
+.companion-panel { bottom: 8px; padding: 14px 17px 12px; }
+.request { margin-block: 12px; }
+.demo-bottom { flex: 0 0 auto; flex-direction: row; flex-wrap: nowrap; padding: 14px 20px 18px; }
+.demo-bottom > span { max-width: 90px; }
+
+@media (min-width: 801px) and (max-height: 700px) {
+  .hero { padding-block: 16px; }
+  .demo-scene { height: calc(100svh - var(--header-height) - 32px); min-height: 350px; }
+  .hero-actions { gap: 18px; }
+  .primary-cta { gap: 20px; }
+  .hero-copy > .eyebrow { margin-bottom: 12px; }
+  h1 { font-size: clamp(40px, min(5.8vw, 9.5svh), 66px); }
+  .intro { margin-block: 14px; }
+  .file-list { min-height: 0; }
+  .file-row { padding-block: 3px; }
+  .window-top { height: 32px; }
+  .window-bottom { padding-block: 7px; }
+  .pet { top: 18%; width: min(34%, 180px); }
+  .companion-panel { padding: 10px 14px; }
+  .request { margin-block: 8px; }
+  .demo-bottom { padding-block: 10px; }
+}
+
+@media (max-width: 800px) {
+  :root { --header-height: 64px; }
+  .page-shell { padding-inline: clamp(16px, 4vw, 28px); }
+  .site-header { height: var(--header-height); }
+  .wordmark { font-size: 26px; }
+  .wordmark img { width: 36px; height: 34px; }
+  .nav-cta { padding: 9px 12px; }
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-content: center;
+    gap: clamp(12px, 2.2svh, 24px);
+    padding-block: clamp(12px, 2.5svh, 24px);
+  }
+  .hero-copy > .eyebrow { font-size: 11px; margin-bottom: 8px; }
+  h1 { font-size: clamp(28px, min(8.7vw, 5.2svh), 44px); line-height: 1.04; letter-spacing: -.055em; }
+  h1 br:first-child, h1 > span br { display: none; }
+  h1 > span { display: block; }
+  .intro { margin-block: 10px 12px; font-size: 14px; line-height: 1.4; }
+  .hero-actions { gap: 18px; }
+  .primary-cta { padding: 11px 15px; min-height: 44px; font-size: 14px; gap: 15px; }
+  .demo-link { font-size: 13px; padding-block: 10px; }
+  .availability { margin-top: 8px; font-size: 12px; }
+  .demo-scene { height: clamp(250px, calc(100svh - 330px), 440px); max-width: 520px; margin: 0 auto; }
+  .scene-top { padding: 11px 14px 0; font-size: 11px; }
+  .scene-top .demo-label { display: block; max-width: none; font-size: 11px; }
+  .desktop-stage { margin-top: 6px; }
+  .file-window { top: 8px; left: 5%; width: 66%; max-width: 295px; }
+  .window-top { height: 27px; padding-inline: 10px; font-size: 12px; }
+  .file-list { min-height: 0; gap: 0; padding: 5px 8px; }
+  .file-row { font-size: 12px; gap: 6px; padding: 3px 2px; }
+  .file-icon { width: 15px; height: 17px; font-size: 6px; }
+  .window-bottom { padding: 6px 10px; font-size: 10px; }
+  .pet { top: 13%; right: 1%; width: min(33%, 160px); }
+  .pet-bubble { padding: 6px 9px; font-size: 11px; right: 8%; transform: rotate(-8deg) translateY(-24px); }
+  .companion-panel { left: 5%; width: 90%; bottom: 3px; padding: 10px 12px; }
+  .panel-heading { font-size: 12px; }
+  .keyboard-hint { font-size: 10px; }
+  .request { font-size: 14px; margin: 7px 0; }
+  .demo-response { font-size: 12px; min-height: 28px; }
+  .demo-response > button { min-width: 32px; height: 30px; }
+  .demo-bottom { padding: 8px 12px 10px; gap: 8px; justify-content: space-between; }
+  .demo-bottom > span { font-size: 10px; max-width: 70px; }
+  .demo-tabs { padding: 3px; }
+  .demo-tabs button { font-size: 12px; min-height: 36px; padding: 6px 10px; }
+}
+
+/* A compact composition for short phones, without hiding any primary action. */
+@media (max-width: 800px) and (max-height: 680px) {
+  :root { --header-height: 56px; }
+  .hero { padding-block: 10px; gap: 10px; }
+  h1 { font-size: clamp(27px, 8.5vw, 34px); }
+  .hero-copy > .eyebrow { margin-bottom: 5px; }
+  .intro { margin-block: 7px 9px; }
+  .demo-scene { height: clamp(240px, calc(100svh - 294px), 370px); }
+  .scene-top { padding-top: 8px; }
+  .window-bottom { padding-block: 4px; }
+  .pet { top: 12%; width: min(32%, 118px); }
+  .file-row { padding-block: 1px; }
+  .companion-panel { padding: 8px 10px; }
+  .panel-heading { display: none; }
+  .request { margin: 0 0 5px; }
+}
+
+/* Landscape is a wide composition, even on a small device. */
+@media (min-width: 600px) and (max-width: 800px) and (max-height: 500px) {
+  .hero { grid-template-columns: 1fr 1.15fr; grid-template-rows: auto; gap: 20px; }
+  .hero-copy { text-align: left; }
+  .hero-copy > .eyebrow, .hero-actions { justify-content: flex-start; }
+  h1 { font-size: 34px; }
+  .hero-actions { gap: 5px 14px; }
+  .demo-scene { height: 300px; }
+}
+@media (max-width: 360px) {
+  .hero-actions { gap: 10px; }
+  .primary-cta { padding-inline: 12px; font-size: 13px; gap: 9px; }
+  .demo-link { font-size: 12px; }
+  .demo-link span { margin-left: 3px; }
+}
+
+@media (min-width: 600px) and (max-height: 500px) {
+  :root { --header-height: 56px; }
+  .page-shell { padding-inline: 24px; }
+  .hero { grid-template-columns: 1fr 1.15fr; grid-template-rows: auto; padding-block: 10px; gap: 24px; }
+  h1 { font-size: 32px; }
+  .hero-copy > .eyebrow { font-size: 10px; margin-bottom: 8px; }
+  .intro { font-size: 14px; margin-block: 9px; }
+  .hero-actions { gap: 8px 12px; }
+  .primary-cta { padding: 10px 12px; gap: 9px; font-size: 13px; }
+  .demo-link { font-size: 12px; padding-block: 8px; }
+  .availability { margin-top: 8px; font-size: 11px; }
+  .demo-scene { height: calc(100svh - 76px); min-height: 0; }
+  .scene-top { padding: 10px 12px 0; font-size: 10px; }
+  .scene-top .demo-label { font-size: 10px; }
+  .desktop-stage { margin-top: 5px; }
+  .file-window { top: 7px; width: 66%; max-width: 270px; }
+  .window-top { height: 25px; font-size: 12px; }
+  .file-list { min-height: 0; padding: 5px 8px; }
+  .file-row { padding-block: 1px; font-size: 12px; }
+  .file-icon { width: 14px; height: 16px; }
+  .window-bottom { padding-block: 4px; font-size: 10px; }
+  .pet { top: 12%; width: min(32%, 120px); }
+  .pet-bubble { font-size: 10px; padding: 6px 8px; }
+  .companion-panel { bottom: 2px; padding: 8px 10px; }
+  .panel-heading { display: none; }
+  .request { margin: 0 0 5px; font-size: 14px; }
+  .demo-response { font-size: 12px; }
+  .demo-bottom { padding: 7px 12px 9px; }
+  .demo-bottom > span { font-size: 10px; }
+  .demo-tabs button { min-height: 32px; font-size: 12px; padding: 6px 9px; }
+}

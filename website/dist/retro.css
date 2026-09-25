@@ -1,0 +1,53 @@
+/* Pixel lettering where Kibu's personality speaks; normal type for reading. */
+@font-face {
+  font-family: 'Pixelify Sans';
+  src: url('assets/fonts/PixelifySans.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}
+:root { --pixel: 'Pixelify Sans', var(--mono); }
+h1, h2, .wordmark, footer .footer-brand {
+  font-family: var(--pixel);
+  font-weight: 500;
+  letter-spacing: -.035em;
+}
+h1 { line-height: 1.02; }
+.hero-copy > .eyebrow, .section-note .eyebrow, .play-heading .eyebrow {
+  font-family: var(--pixel);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 1.2px;
+}
+.pet-bubble, .play-bubble {
+  font-family: var(--pixel);
+  font-size: 15px;
+  line-height: 1.25;
+  border-radius: 2px;
+  box-shadow: 3px 3px 0 #0005;
+}
+/* Small tactile details, rather than a CRT filter over the whole page. */
+.play-controls button { border-radius: 3px; box-shadow: 3px 3px 0 #090c08; }
+.play-controls button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #090c08; }
+.demo-tabs, .demo-tabs button { border-radius: 3px; }
+.traffic i { border-radius: 1px; }
+.file-window { border-radius: 5px; }
+.window-top { border-bottom-style: dashed; }
+.yard-orbit:before { border-radius: 0; }
+.play-heading { border-bottom: 1px dashed #d4ff3a25; }
+.play-yard { border-top: 0; }
+@media (max-width: 800px) {
+  h1 { font-size: clamp(27px, min(8.4vw, 5.1svh), 43px); letter-spacing: -.035em; }
+  .hero-copy > .eyebrow { font-size: 12px; letter-spacing: 1px; }
+  .pet-bubble { font-size: 13px; }
+  .play-bubble { font-size: 14px; }
+  .control-content h2, .play-heading h2 { letter-spacing: -.035em; }
+}
+@media (max-width: 800px) and (max-height: 680px) {
+  h1 { font-size: clamp(26px, 8.2vw, 33px); }
+}
+@media (min-width: 600px) and (max-height: 500px) {
+  h1 { font-size: 32px; }
+  .hero-copy > .eyebrow { font-size: 11px; }
+  .pet-bubble { font-size: 12px; }
+}
