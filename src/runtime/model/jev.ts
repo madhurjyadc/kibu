@@ -273,6 +273,82 @@ export class Jev {
   }
 
   /* ---------------------------------------------------------------- *
+   * Getting the planner ready
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Everything the planning model's first step would otherwise spend a round
+   * trip on, decided in one Jev call:
+   *
+   *   - which tool families the request needs, so the planner is shown a
+   *     short menu instead of every tool (a shorter prompt is a faster step);
+   *   - which parts of "this" to fetch up front — selection, browser tab,
+   *     Finder selection, clipboard — so the planner starts with them rather
+   *     than asking for them;
+   *   - whether the job is small enough for the quick model.
+   *
+   * None of it grants anything. Narrowing the menu only hides tools, and the
+   * runner widens it again, and moves to the full model, the moment the
+   * work stops going well. Without Jev the same answers come from keywords.
+   */
+  async planSetup(request: string, route: string, hasDroppedPaths: boolean): Promise<PlanSetup> {
+    const local = localPlanSetup(request, route, hasDroppedPaths)
+    if (!this.client) {
+      this.record('plan_setup', false, 0, 0, 0, describeSetup(local), 1)
+      return local
+    }
+    const started = Date.now()
+    const family = (question: string) => noul(question, { true: 'Yes, this is needed.', false: 'No.' })
+    try {
+      const { answers, usage } = await this.client.systemOne({
+        state: { request, filesDroppedOntoAssistant: hasDroppedPaths, today: new Date().toDateString() },
+        questions: {
+          files: family('Does this involve files or folders on the computer?'),
+          desktop: family("Does this need clicking and typing inside an app's window, for an app with no other way in?"),
+          browser: family('Does this need a web browser to visit a site, search the web, fill a form or download something?'),
+          calendar: family('Does this involve the calendar: events, meetings, schedule, free time?'),
+          reminders: family('Does this involve reminders or a to-do list?'),
+          notes: family('Does this involve the Notes app: writing, finding or reading a note?'),
+          mail: family('Does this involve writing an email?'),
+          shortcuts: family("Does this ask to run one of the user's Shortcuts?"),
+          system: family('Does this involve a system setting (dark mode, volume) or opening or quitting an app?'),
+          selection: family('Does "this", "it" or "that" refer to text the user has selected?'),
+          tab: family('Does the request refer to the web page or site the user has open?'),
+          finder: family('Does it refer to files the user has selected in Finder?'),
+          clipboard: family('Does the user mention something they copied, or the clipboard?'),
+          effort: choice('How much work is this?', {
+            quick: 'One small job in one place: add an event, answer from one page, change a setting.',
+            involved: 'Several steps across apps or sites, working something out, or writing something substantial.'
+          })
+        }
+      })
+      const yes = (a: { noul?: number } | undefined, fallback: boolean): boolean =>
+        typeof a?.noul === 'number' ? a.noul > 0.5 : fallback
+      const families = FAMILY_KEYS.filter((k) => yes(answers[k] as { noul?: number }, local.families.includes(k)))
+      const setup: PlanSetup = {
+        // A family local keywords are sure of stays even if Jev disagrees:
+        // hiding a tool the request plainly names can only cost a replan.
+        families: [...new Set([...families, ...local.families])],
+        context: {
+          selection: yes(answers.selection as { noul?: number }, local.context.selection),
+          tab: yes(answers.tab as { noul?: number }, local.context.tab),
+          finder: yes(answers.finder as { noul?: number }, local.context.finder),
+          // The clipboard can hold anything, passwords included: only read it
+          // when the words actually point at it.
+          clipboard: local.context.clipboard && yes(answers.clipboard as { noul?: number }, true)
+        },
+        quick: (answers.effort as { choice?: string } | undefined)?.choice === 'quick',
+        source: 'jev'
+      }
+      this.record('plan_setup', true, Date.now() - started, jevCost(usage.input_tokens), usage.input_tokens, describeSetup(setup), 1)
+      return setup
+    } catch {
+      this.record('plan_setup', true, Date.now() - started, 0, 0, `${describeSetup(local)} (fallback)`, 0)
+      return local
+    }
+  }
+
+  /* ---------------------------------------------------------------- *
    * Progress
    * ---------------------------------------------------------------- */
 
@@ -475,6 +551,60 @@ export class Jev {
     this.metrics.totalUsd += usd
     this.metrics.totalLatencyMs += latencyMs
   }
+}
+
+export const FAMILY_KEYS = ['files', 'desktop', 'browser', 'calendar', 'reminders', 'notes', 'mail', 'shortcuts', 'system'] as const
+export type Family = (typeof FAMILY_KEYS)[number]
+
+export interface PlanSetup {
+  families: Family[]
+  context: { selection: boolean; tab: boolean; finder: boolean; clipboard: boolean }
+  /** The job is small enough for the quick model. */
+  quick: boolean
+  source: 'local' | 'jev'
+}
+
+const FAMILY_WORDS: Record<Family, RegExp> = {
+  files: /\b(files?|folders?|downloads?|desktop|documents?|pdfs?|screenshots?|images?|photos?|rename|organi[sz]e|tidy)\b/i,
+  desktop: /\b(click|window|menu|button|type into|in the app)\b/i,
+  browser: /\b(website|site|web|online|google|search for|look up|download from|https?:\/\/|\w+\.(com|org|io|net|dev|ai|in|co))\b/i,
+  calendar: /\b(calendar|meeting|event|schedule|appointment|agenda|free (?:at|hour|time|slot|between)|busy|call with|availability)\b/i,
+  reminders: /\b(remind|reminders?|to-?do|todo)\b/i,
+  notes: /\b(notes?|jot)\b/i,
+  mail: /\b(e-?mail|mail|reply to|draft)\b/i,
+  shortcuts: /\bshortcuts?\b/i,
+  system: /\b(dark mode|light mode|volume|mute|unmute|quit|launch|open (?:the )?app)\b/i
+}
+
+/** The keyword reading of the same questions, used without Jev and as a floor with it. */
+export function localPlanSetup(request: string, route: string, hasDroppedPaths: boolean): PlanSetup {
+  const families = FAMILY_KEYS.filter((k) => FAMILY_WORDS[k].test(request))
+  if (hasDroppedPaths && !families.includes('files')) families.push('files')
+  if (families.length === 0) {
+    // Nothing named: fall back to what the route implies.
+    if (route === 'browser') families.push('browser')
+    else if (route === 'desktop') families.push('desktop', 'system')
+    else if (route === 'files') families.push('files')
+  }
+  const deictic = /\b(this|that|it|these|those|here)\b/i.test(request)
+  return {
+    families,
+    context: {
+      selection: deictic && !hasDroppedPaths,
+      tab:
+        /\b(page|tab|site|article|link|video|post|thread)\b/i.test(request) &&
+        (deictic || /\b(have open|had open|got open|currently|current|viewing|reading|watching|looking at|i'?m on|on screen)\b/i.test(request)),
+      finder: deictic && /\b(files?|folders?|selected)\b/i.test(request) && !hasDroppedPaths,
+      clipboard: /\b(clipboard|copied|paste)\b/i.test(request)
+    },
+    quick: request.trim().split(/\s+/).length <= 14 && !/\b(and then|then|after that|every|each|all of)\b/i.test(request),
+    source: 'local'
+  }
+}
+
+function describeSetup(s: PlanSetup): string {
+  const ctx = Object.entries(s.context).filter(([, v]) => v).map(([k]) => k)
+  return `${s.families.join('+') || 'everything'}${ctx.length ? `, fetch ${ctx.join('+')}` : ''}, ${s.quick ? 'quick' : 'full'} model`
 }
 
 /** Summary line for the task history, so Jev's cost and effect stay visible. */

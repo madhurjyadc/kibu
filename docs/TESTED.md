@@ -8,7 +8,32 @@ Last updated against commit state: initial prototype.
 
 ---
 
-## Verified by automated tests (`npm test` — 64 tests, all passing)
+## Verified live on a real Mac (26 September 2026)
+
+Run with `npm run eval` and a few direct script checks, on macOS with Calendar,
+Reminders, Notes and Chrome in use:
+
+- **Every app script, against the real apps.** Listing calendars and events,
+  reminder lists and open reminders, Notes search, running apps, browser tabs,
+  Finder selection, dark mode and volume (read only), and the Shortcuts CLI.
+  Creating an event, a reminder and a note; reading each back; undoing each;
+  and confirming it is gone. First contact with an app takes up to ~7s while
+  it launches; after that calls take 0.1–2s.
+- **The Claude Code planner, driving the real loop.** Answering from the open
+  browser tab, listing open reminders, saving the open tab as a note (and
+  undoing it), and planning a day from Calendar and Reminders. 12 of 12 eval
+  cases passed; planner cases took 3–26s, median 8.7s.
+- **The no-model app workflows.** Reminders at relative and ambiguous times,
+  an event on a named calendar, the agenda, free-slot finding, a note, and the
+  biggest file in Downloads. Median 1.7s.
+
+Not live-verified: **Jev itself.** The eval ran with Jev's local fallback,
+because the TypeSafe key is encrypted for the app and was not available to the
+eval. Run `TYPESAFE_API_KEY=… npm run eval` to cover it. The Anthropic API
+planner path, Mail drafts (they open a window) and running a shortcut (there
+were none to run) were also not exercised live.
+
+## Verified by automated tests (`npm test` — 195 tests, all passing)
 
 ### Authorization (`test/files.test.ts`)
 - A path inside a granted root is allowed; a path outside is reported as a
@@ -132,8 +157,10 @@ The compiled Swift helper was run directly and confirmed to:
 
 ## NOT tested — be skeptical of these
 
-### No live model run has happened, for either provider
-**This is the biggest gap.** Neither an Anthropic key nor a TypeSafe key was
+### No live Jev call, and no live Anthropic API run
+**Update:** the Claude Code planner has now run live (see the top of this file). What follows still applies to Jev and to the Anthropic API planner.
+
+**This was the biggest gap.** Neither an Anthropic key nor a TypeSafe key was
 available in the environment where this was built, so the loop has never been
 driven by a real planning model and has never made a real Jev call. Everything
 in `test/runner.test.ts` uses a scripted planner, and everything in

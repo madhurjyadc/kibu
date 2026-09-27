@@ -46,6 +46,14 @@ export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: 
     },
     {
       kind: 'text',
+      label: 'Your day',
+      value:
+        'Add reminders and calendar events, tell you what is on or when you are free, write notes, draft ' +
+        'emails for you to send, run your Shortcuts, and switch dark mode or the volume. New events, ' +
+        'reminders and notes can be undone.'
+    },
+    {
+      kind: 'text',
       label: 'Your Mac',
       value: canSeeApps
         ? 'Read what is in a window and press its buttons or fill its fields through accessibility, rather ' +
@@ -72,9 +80,11 @@ export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: 
       kind: 'text',
       label: 'Try me with',
       value: workflowsEnabled
-        ? '"tidy up my Downloads", "find the invoice I saved yesterday", "give these files proper names" — ' +
-          'those three run on local code and Jev in about a second, with no planning model at all.'
-        : '"tidy up my Downloads", "find the invoice I saved yesterday", "give these files proper names".'
+        ? '"remind me to call mom tomorrow at 7", "when am I free tomorrow", "tidy up my Downloads", ' +
+          '"find the invoice I saved yesterday" — those run on local code and Jev in about a second, with no ' +
+          'planning model at all.'
+        : '"remind me to call mom tomorrow at 7", "when am I free tomorrow", "tidy up my Downloads", ' +
+          '"find the invoice I saved yesterday".'
     }
   ]
 

@@ -127,8 +127,13 @@ export interface VerificationResult {
  * reverse; there is no universal undo.
  */
 export interface UndoEntry {
-  kind: 'file.move' | 'file.rename' | 'folder.create'
-  /** Enough information to reverse the operation and to detect conflicts. */
+  kind: 'file.move' | 'file.rename' | 'folder.create' | 'mac.event' | 'mac.reminder' | 'mac.note' | 'mac.setting'
+  /**
+   * Enough information to reverse the operation and to detect conflicts.
+   * For app items (`mac.event`, `mac.reminder`, `mac.note`) `from` is the app
+   * and `to` is the id it gave the item. For `mac.setting`, `from` names the
+   * setting and `to` holds its previous value.
+   */
   payload: { from: string; to: string }
   reversed?: boolean
 }

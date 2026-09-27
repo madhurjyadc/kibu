@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { Store } from './db.js'
 import type { UndoReport } from '../../shared/protocol.js'
+import { reverseMacChange } from '../../os/macos/scripting.js'
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -28,6 +29,19 @@ export async function undoTask(store: Store, taskId: string): Promise<UndoReport
   for (const { id, undo } of entries) {
     const { from, to } = undo.payload
     try {
+      if (undo.kind.startsWith('mac.')) {
+        // App items are removed by the id the app gave them; settings go back
+        // to the value recorded before the change.
+        const r = await reverseMacChange(undo.kind as Parameters<typeof reverseMacChange>[0], undo.payload)
+        if (r.ok) {
+          store.markReversed(id)
+          report.reversed++
+        } else {
+          report.skipped.push({ path: `${from}: ${to}`, reason: r.reason })
+          if (/already gone/.test(r.reason)) store.markReversed(id)
+        }
+        continue
+      }
       if (undo.kind === 'folder.create') {
         if (!(await exists(to))) {
           report.skipped.push({ path: to, reason: 'folder is already gone' })

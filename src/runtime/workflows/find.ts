@@ -37,8 +37,11 @@ export const findWorkflow: Workflow = {
     // and "find big files" work: neither says "mp4" or gives a byte count.
     const read = ctx.understanding()
     const extensions = parsed.extensions.length ? parsed.extensions : extensionsFor(read.kind)
-    const minBytes = bytesFor(read.size)
-    const since = parsed.modifiedAfter ?? sinceFor(read.when)
+    // "the biggest file" is a ranking, not a threshold: every size counts,
+    // and it is not a question about what is recent.
+    const superlative = /\b(biggest|largest|heaviest)\b/i.test(request)
+    const minBytes = superlative ? 1 : bytesFor(read.size)
+    const since = superlative && parsed.recencyOnly ? null : (parsed.modifiedAfter ?? sinceFor(read.when))
     const named = parsed.folder ?? folderFor(read.place)
     // Precedence: a folder the user actually put in front of me, then one they
     // named in the sentence, then their whole home. Searching everything is
@@ -62,6 +65,8 @@ export const findWorkflow: Workflow = {
     }
 
     const matches = (res.result as { matches: FoundFile[] }).matches
+    if (superlative) matches.sort((a, b) => b.size - a.size)
+    const lead = superlative && matches[0] ? `Biggest: ${matches[0].name} (${formatSize(matches[0].size)})` : undefined
     if (matches.length === 0) {
       // Widening to the whole home is free, so try that before giving up.
       const wider =
@@ -82,10 +87,10 @@ export const findWorkflow: Workflow = {
           unresolved: `searched ${root === homedir() ? 'your home folder' : root}`
         }
       }
-      return present(widened, ctx)
+      return present(widened, ctx, lead)
     }
 
-    return present(matches, ctx)
+    return present(matches, ctx, lead)
   }
 }
 
@@ -95,19 +100,28 @@ export const findWorkflow: Workflow = {
  * Deliberately not a question. The user asked for a file, not for a quiz, and
  * every row here is one click from opening.
  */
-function present(matches: FoundFile[], ctx: WorkflowContext): WorkflowResult {
+function present(matches: FoundFile[], ctx: WorkflowContext, lead?: string): WorkflowResult {
   const best = matches[0]!
   const rest = matches.slice(1, 5)
   ctx.log('info', `found ${matches.length} matches, best ${best.path}`, { score: best.score })
 
   return {
     success: true,
-    headline: `${Math.min(matches.length, 5)} match${matches.length === 1 ? '' : 'es'}`,
+    headline: lead ?? `${Math.min(matches.length, 5)} match${matches.length === 1 ? '' : 'es'}`,
     evidence: [
       { kind: 'path', label: best.name, value: best.path },
       ...rest.map((m) => ({ kind: 'path' as const, label: m.name, value: m.path }))
     ]
   }
+}
+
+/** 1.2 GB, 340 MB, 12 KB. */
+function formatSize(bytes: number): string {
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB']
+  let n = bytes
+  let i = 0
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
+  return `${n >= 10 || i === 0 ? Math.round(n) : n.toFixed(1)} ${units[i]}`
 }
 
 function describeNothing(_parsed: ReturnType<typeof parseQuery>): string {

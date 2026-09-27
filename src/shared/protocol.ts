@@ -115,6 +115,13 @@ export type HostToRuntime =
        * application is Kibu itself.
        */
       frontWindow: FrontWindow | null
+      /**
+       * The name of the app the person was in, sent with every task — unlike
+       * frontWindow, which only travels when they choose to include the
+       * window. A name grants nothing; it tells "save this" which app "this"
+       * was in.
+       */
+      previousApp?: string | null
       /** Ask before every action, even inside an existing authorization. */
       confirmEveryAction: boolean
       /**

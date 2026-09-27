@@ -13,6 +13,7 @@ import { shellTools } from './tools/shell.js'
 import { userTools } from './tools/user.js'
 import { desktopTools } from './tools/desktop.js'
 import { browserTools, ManagedBrowser } from './tools/browser.js'
+import { macTools } from './tools/mac.js'
 import { TaskRunner } from './loop/task-runner.js'
 import { ClaudeCodePlanner } from './model/claude-code-planner.js'
 import { runBench } from './bench.js'
@@ -34,7 +35,7 @@ const browser = new ManagedBrowser(profileDir, downloadDir, (level, message) =>
 )
 
 const registry = new ToolRegistry()
-registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools])
+registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools])
 
 let runner: TaskRunner | null = null
 
@@ -74,6 +75,8 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
         ? { createPlanner: (): ClaudeCodePlanner => new ClaudeCodePlanner({ model: msg.model.claudeCode }) }
         : {}),
       frontWindow: msg.frontWindow,
+      previousApp: msg.previousApp ?? null,
+      prefetchContext: true,
       confirmEveryAction: msg.confirmEveryAction,
       previousTurn: msg.previousTurn,
       droppedPaths

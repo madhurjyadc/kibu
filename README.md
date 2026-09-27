@@ -136,13 +136,19 @@ The model proposes actions. Local code decides whether they happen:
 5. After execution, the tool's own verifier checks the effect really landed. A
    tool that reports success but fails verification is recorded as a failure.
 
-### Three ways to act, in order of preference
+### Ways to act, in order of preference
 
 1. **Direct operations** — file moves happen through the filesystem, not by
    driving Finder.
-2. **Semantic control** — macOS accessibility actions and browser DOM
+2. **App scripting** — Calendar, Reminders, Notes, Mail, browser tabs, the
+   Shortcuts app and a few system settings are driven through their own
+   scripting interfaces (`src/os/macos/scripting.ts`), which take well under a
+   second and either work or say why. Each change is read back to verify it,
+   and new events, reminders, notes and setting changes can be undone. Mail is
+   only ever a draft; nothing Kibu does reaches another person on its own.
+3. **Semantic control** — macOS accessibility actions and browser DOM
    references, which are far more reliable than pixels.
-3. **Synthetic input** — clicks and keystrokes, only when nothing above is
+4. **Synthetic input** — clicks and keystrokes, only when nothing above is
    available, and each one records why it was needed.
 
 Element references are tied to the observation that produced them. Acting on a
@@ -161,7 +167,15 @@ calls between them. No planning-model call happens at all.
 | "Find the PDF I downloaded yesterday" | Jev turns the sentence into filters chosen from fixed sets. Code searches and ranks. | No |
 | "Rename these files consistently" | Jev picks one of five fixed naming schemes. Code applies it. | No |
 | "Make a folder called automaton in dev and open it in Zed" | Local patterns produce the steps; the macOS index resolves which folder and which app was meant. Jev only picks when several real candidates exist. | No |
+| "Remind me to call mom tomorrow at 7" | Code reads the title and the time (`src/runtime/when.ts`). "At 7" has two readings; Jev picks between them. | No |
+| "Put dentist on my calendar friday 10am" | Code reads title, time and length; Jev picks which of your real calendars; code warns about clashes. | No |
+| "What's on tomorrow", "when is my first free hour" | Code reads the day and window, reads Calendar, and finds the gaps. | No |
+| "Dark mode", "volume to 30", "mute" | Code. | No |
+| "Run my focus shortcut" | Jev picks among the names of your real shortcuts. | No |
+| "Note: …", "save this to Notes" | Code; "this" is your selection or open tab. | No |
 | Anything else | The full agent loop. | Yes |
+
+Live, on a real Mac, these take about 0.5–3 seconds end to end.
 
 The constraint that keeps this honest: **a workflow may only ask Jev to choose
 between alternatives local code has already constructed.** Jev cannot generate
@@ -177,6 +191,27 @@ A request that needs the planner then fails with a message naming what it *can*
 do, rather than a bare error. Turn workflows off under `/tune` to send
 everything through the planner.
 
+### Making the planner fast
+
+When a request does need the planner, one Jev call (`Jev.planSetup`) settles
+what its first step would otherwise spend a round trip on:
+
+- **Which tool families** the request needs. The planner is shown, say, only
+  the Notes and "what's on screen" tools for "save this page as a note",
+  instead of all fifty. A shorter prompt is a faster step.
+- **Which parts of "this"** to fetch in advance: your selected text, the tab
+  open in your browser, Finder's selection, or — only when you mention
+  copying or pasting — the clipboard. They are fetched in parallel and handed
+  to the planner as data.
+- **Whether the quick model will do.** Small jobs plan on Haiku with thinking
+  off.
+
+These are bets, and they are called off automatically: the first time the
+progress check says the work is not going well, the planner is shown every
+tool and moved to the full model. Narrowing the menu never grants anything;
+every call still passes the scope check. Without a TypeSafe key, keyword rules
+answer the same questions.
+
 ### Planning through Claude Code
 
 Kibu's loop talks to a `PlannerLike`, not to a vendor, so the planning model
@@ -186,11 +221,17 @@ drives the locally installed **Claude Code CLI** in print mode instead of the
 Anthropic API, using the login already on the machine. Turn it on under
 `/tune`; it only appears when the `claude` binary is actually found.
 
-Each step runs `claude -p --output-format json` with **every Claude Code tool
-denied** (`--allowed-tools ""`) and `--strict-mcp-config`, from a neutral
-working directory, so that process can only answer — it cannot read a file,
-run a command, or pick up the `CLAUDE.md` of whatever project you happen to be
-sitting in. It is handed Kibu's system prompt, Kibu's tool schemas, and the
+One Claude Code process is started per task and kept open, fed one message
+per step over `--input-format stream-json`; starting the CLI costs about two
+seconds, so doing it once instead of every step roughly halves a task. It
+restarts on the same conversation only when the model tier changes. It runs with **no Claude Code tools
+loaded or allowed** (`--tools "" --allowed-tools ""`), no user settings, hooks,
+skills or MCP servers (`--setting-sources "" --disable-slash-commands
+--strict-mcp-config`), from a neutral working directory, so that process can
+only answer — it cannot read a file, run a command, or pick up the `CLAUDE.md`
+of whatever project you happen to be sitting in. Kibu's system prompt
+*replaces* Claude Code's coding-agent prompt (`--system-prompt`), which takes a
+trivial step from about 4s to about 1.5s. It is handed Kibu's system prompt, Kibu's tool schemas, and the
 task's authorization, and it replies with one JSON object naming the calls it
 wants. The first turn opens a session; later turns `--resume` it, so the
 conversation is not resent each step.
@@ -309,10 +350,25 @@ and anything done through synthetic input are not reversible.
 npm test
 ```
 
-129 tests covering authorization, file operations, the task loop, the
-planner-free workflows, Jev's request shape and caution-clamping, undo, crash
-recovery, and a real browser workflow against a local server. See `docs/TESTED.md` for exactly what that does and
-does not prove — in particular, neither model provider has been called live.
+195 tests covering authorization, file operations, the task loop, the
+planner-free workflows (files and apps), time reading, Jev's request shape and
+caution-clamping, the planner's tool narrowing and widening, the persistent
+Claude Code session, undo, crash recovery, and a real browser workflow against
+a local server. The app tests run against an in-memory fake Mac, never your
+real apps. See `docs/TESTED.md` for exactly what that does and does not prove.
+
+### Live eval
+
+```bash
+npm run eval                 # every case
+npm run eval -- remind tab   # cases whose id contains a word
+TYPESAFE_API_KEY=… npm run eval   # with Jev instead of its local fallback
+```
+
+Runs real requests through the real runner on this Mac, with Claude Code
+planning, and reports which path handled each one, how long it took, and
+whether it worked. It only reads, or creates things it then removes with
+Kibu's own undo (notes go to Recently Deleted).
 
 ### Interface checks
 

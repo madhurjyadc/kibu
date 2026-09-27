@@ -229,6 +229,7 @@ function startTask(req: StartTaskRequest): TaskState {
     jevApiKey: secrets.getJevKey(),
     model: { ...DEFAULT_MODEL_CONFIG, claudeCode: settings.claudeCodeModel },
     frontWindow: req.includeFrontWindow ? lastFrontWindow : null,
+    previousApp: lastFrontWindow?.name ?? null,
     confirmEveryAction: settings.confirmEveryAction,
     workflowsEnabled: settings.workflowsFirst,
     useClaudeCode: planViaClaudeCode,

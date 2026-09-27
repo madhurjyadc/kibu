@@ -136,7 +136,9 @@ export async function findFiles(opts: FindOptions): Promise<FoundFile[]> {
     // The index returns matches in no useful order, so prefer the ones whose
     // names match before spending a stat on the rest.
     .sort((a, b) => nameHits(b, concepts.length ? concepts : terms) - nameHits(a, concepts.length ? concepts : terms))
-    .slice(0, 150)
+    // Size cannot be known before a stat, so a size question looks at far
+    // more candidates; a stat is cheap next to missing the biggest file.
+    .slice(0, minBytes > 0 ? 5000 : 150)
 
   // One stat each, all at once: doing these in sequence was most of the wait.
   const stats = await Promise.all(
@@ -172,7 +174,10 @@ export async function findFiles(opts: FindOptions): Promise<FoundFile[]> {
     })
   }
 
-  scored.sort((a, b) => b.score - a.score || b.modifiedAt - a.modifiedAt)
+  // A size question with nothing else named ("the biggest file in Downloads")
+  // is answered by size alone.
+  if (minBytes > 0 && terms.length === 0) scored.sort((a, b) => b.size - a.size)
+  else scored.sort((a, b) => b.score - a.score || b.modifiedAt - a.modifiedAt)
   return scored.slice(0, opts.limit)
 }
 
@@ -356,7 +361,9 @@ const STOPWORDS = new Set([
   'find','the','a','an','my','me','i','file','files','that','this','it','open','show','where','is','was','get',
   'please','can','you','for','of','in','on','from','with','about','and','or','to','last','some','thing','saved',
   'downloaded','looking','look','need','want','again','one','document','folder','pls','plz','search','locate',
-  'pc','computer','mac','laptop','device','card','copy','could','would','hey','kibu','out','up','have','where','stored','dig'
+  'pc','computer','mac','laptop','device','card','copy','could','would','hey','kibu','out','up','have','where','stored','dig',
+  // Size is a filter and a ranking, never part of a filename.
+  'big','bigger','biggest','large','larger','largest','huge','heaviest','massive','space','storage'
 ])
 
 export function distinctiveWords(text: string): string[] {

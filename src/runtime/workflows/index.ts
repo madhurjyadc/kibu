@@ -3,9 +3,10 @@ import { organizeWorkflow } from './organize.js'
 import { findWorkflow } from './find.js'
 import { renameWorkflow } from './rename.js'
 import { commandWorkflow } from './command.js'
+import { assistWorkflows } from './assist.js'
 import type { Workflow, WorkflowContext } from './types.js'
 
-export const WORKFLOWS: Workflow[] = [organizeWorkflow, findWorkflow, renameWorkflow, commandWorkflow]
+export const WORKFLOWS: Workflow[] = [...assistWorkflows, organizeWorkflow, findWorkflow, renameWorkflow, commandWorkflow]
 
 export interface WorkflowMatch {
   workflow: Workflow
@@ -41,7 +42,6 @@ export async function routeToWorkflow(
     ctx.log('info', `nothing matches a "${effective}" request; handing to the planner`)
     return null
   }
-  if (plausible.length === 0) return null
   if (plausible.length === 1) {
     return { workflow: plausible[0]!, confidence: 0.8, reason: 'the request matches one known workflow' }
   }

@@ -94,6 +94,11 @@ test('the first turn sends the request, the authorization and the tool list', as
   assert.notEqual(toolFlag, -1)
   assert.equal(seen[0]!.args[toolFlag + 1], '')
   assert.ok(seen[0]!.args.includes('--strict-mcp-config'))
+  assert.equal(seen[0]!.args[seen[0]!.args.indexOf('--tools') + 1], '')
+  assert.equal(seen[0]!.args[seen[0]!.args.indexOf('--setting-sources') + 1], '')
+  // Kibu's prompt replaces Claude Code's own, rather than riding on top of it.
+  assert.ok(seen[0]!.args.includes('--system-prompt'))
+  assert.ok(!seen[0]!.args.includes('--append-system-prompt'))
   assert.ok(!seen[0]!.args.includes('--resume'))
 })
 

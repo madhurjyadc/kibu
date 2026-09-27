@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from 'node:child_process'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,8 +29,13 @@ export interface ClaudeCodeOptions {
   /** A Claude Code model alias. Sonnet keeps a subscription's quota going furthest. */
   model?: string
   timeoutMs?: number
-  /** Injected in tests so the suite never shells out to a real CLI. */
+  /**
+   * Injected in tests so the suite never shells out to a real CLI. When set,
+   * each step is one CLI call, as it was before the persistent session.
+   */
   run?: (args: string[], input: string) => Promise<string>
+  /** Injected in tests to exercise the persistent session without the CLI. */
+  spawnProcess?: (bin: string, args: string[], env: NodeJS.ProcessEnv) => ChildProcess
 }
 
 /** The shape the CLI is asked to reply in. */
@@ -53,11 +58,31 @@ export class ClaudeCodePlanner implements PlannerLike {
   private seed_: string[] = []
   private pending: string[] = []
   private readonly model: string
+  private tier: 'quick' | 'full' = 'full'
   private readonly timeoutMs: number
+  /** Tools already described to this session, so later turns send only new ones. */
+  private described = new Set<string>()
+  /** One long-lived CLI process for the whole task; see StreamSession. */
+  private stream: StreamSession | null = null
 
   constructor(private readonly options: ClaudeCodeOptions = {}) {
     this.model = options.model ?? 'sonnet'
     this.timeoutMs = options.timeoutMs ?? 180_000
+  }
+
+  setTier(tier: 'quick' | 'full'): void {
+    this.tier = tier
+  }
+
+  /** Ends the CLI process. The runner calls this when the task is over. */
+  dispose(): void {
+    this.stream?.close()
+    this.stream = null
+  }
+
+  /** Haiku for small jobs, unless the user already chose something lighter. */
+  private get activeModel(): string {
+    return this.tier === 'quick' && !/haiku/i.test(this.model) ? 'haiku' : this.model
   }
 
   seed(task: TaskState, droppedPaths: string[]): void {
@@ -93,11 +118,15 @@ export class ClaudeCodePlanner implements PlannerLike {
   async propose(tools: { name: string; description: string; input_schema: object }[]): Promise<PlannerProposal> {
     const first = this.sessionId === null
     const parts: string[] = []
+    const fresh = tools.filter((t) => !this.described.has(t.name))
+    for (const t of fresh) this.described.add(t.name)
     if (first) {
       parts.push(...this.seed_)
       parts.push(`Tools you may call:\n${tools.map(describe).join('\n\n')}`)
-    } else if (this.pending.length === 0) {
-      parts.push('Continue.')
+    } else {
+      // The menu can grow mid-task when the first approach stalls.
+      if (fresh.length) parts.push(`More tools are now available:\n${fresh.map(describe).join('\n\n')}`)
+      if (this.pending.length === 0 && !fresh.length) parts.push('Continue.')
     }
     parts.push(...this.pending)
     this.pending = []
@@ -127,6 +156,29 @@ export class ClaudeCodePlanner implements PlannerLike {
     }
   }
 
+  /**
+   * The CLI process for this task, started on first use. A model change
+   * (the quick tier giving way to the full one) restarts it on the same
+   * conversation, since a running process keeps the model it started with.
+   */
+  private streamFor(): StreamSession {
+    const model = this.activeModel
+    if (this.stream && this.stream.model === model && this.stream.alive) return this.stream
+    this.stream?.close()
+    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--model', model, ...commonArgs()]
+    if (this.sessionId) args.push('--resume', this.sessionId)
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      CLAUDE_CODE_ENTRYPOINT: 'kibu',
+      // Choosing one tool call does not need a chain of thought, and on the
+      // quick model thinking roughly doubles the time a step takes.
+      ...(model === 'haiku' ? { MAX_THINKING_TOKENS: '0' } : {})
+    }
+    const bin = this.options.bin ?? resolveBin()
+    this.stream = new StreamSession(model, this.options.spawnProcess ? this.options.spawnProcess(bin, args, env) : spawnCli(bin, args, env))
+    return this.stream
+  }
+
   /** One round trip to the CLI. */
   private async ask(
     prompt: string
@@ -136,21 +188,14 @@ export class ClaudeCodePlanner implements PlannerLike {
       '--output-format',
       'json',
       '--model',
-      this.model,
-      // Claude Code's own tools stay off: this process only ever answers.
-      '--allowed-tools',
-      '',
-      // Nothing from the user's MCP config joins the conversation.
-      '--strict-mcp-config',
-      '--append-system-prompt',
-      SYSTEM_PROMPT
+      this.activeModel,
+      ...commonArgs()
     ]
     if (this.sessionId) args.push('--resume', this.sessionId)
 
     const stdout = this.options.run
       ? await this.options.run(args, prompt)
-      : await runCli(this.options.bin ?? resolveBin(), args, prompt, this.timeoutMs)
-
+      : JSON.stringify(await this.streamFor().send(prompt, this.timeoutMs))
     let envelope: Record<string, unknown>
     try {
       envelope = JSON.parse(stdout) as Record<string, unknown>
@@ -252,30 +297,115 @@ function clip(text: string, max = 4000): string {
  * The CLI itself
  * ------------------------------------------------------------------ */
 
-function runCli(bin: string, args: string[], input: string, timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = execFile(
-      bin,
-      args,
-      {
-        // A neutral directory: the planner must not pick up the CLAUDE.md or
-        // settings of whatever project the user happens to be sitting in.
-        cwd: tmpdir(),
-        timeout: timeoutMs,
-        maxBuffer: 16 * 1024 * 1024,
-        env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'kibu' }
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          const detail = String(stderr || error.message).trim()
-          reject(new Error(detail.slice(0, 400) || 'Claude Code could not be run'))
-          return
-        }
-        resolve(stdout)
+/** Flags every planning call shares: Claude Code as a pure answerer. */
+function commonArgs(): string[] {
+  return [
+    // Claude Code's own tools are not loaded at all, and none is permitted:
+    // this process only ever answers. Not loading them also keeps their
+    // definitions out of every prompt.
+    '--tools',
+    '',
+    '--allowed-tools',
+    '',
+    // Nothing from the user's MCP servers, settings, hooks or skills joins
+    // the conversation.
+    '--strict-mcp-config',
+    '--setting-sources',
+    '',
+    '--disable-slash-commands',
+    // Kibu's prompt replaces Claude Code's coding-agent prompt rather than
+    // being appended to it. That prompt is tens of thousands of tokens about
+    // writing software; replacing it takes a trivial step from about four
+    // seconds to about one and a half.
+    '--system-prompt',
+    SYSTEM_PROMPT
+  ]
+}
+
+function spawnCli(bin: string, args: string[], env: NodeJS.ProcessEnv): ChildProcess {
+  // A neutral directory: the planner must not pick up the CLAUDE.md or
+  // settings of whatever project the user happens to be sitting in.
+  return spawn(bin, args, { cwd: tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'] })
+}
+
+/**
+ * One Claude Code process kept open for a whole task, fed one user message
+ * per planning step over stream-json.
+ *
+ * Starting the CLI costs about two seconds every time. A task takes several
+ * steps, so starting it once instead of once per step is most of the
+ * difference between a step taking four seconds and taking one.
+ */
+export class StreamSession {
+  private buffer = ''
+  private stderr = ''
+  private pending: { resolve: (m: Record<string, unknown>) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null
+  alive = true
+
+  constructor(readonly model: string, private readonly child: ChildProcess) {
+    child.stdout?.setEncoding('utf8')
+    child.stdout?.on('data', (chunk: string) => this.read(chunk))
+    child.stderr?.on('data', (chunk: Buffer | string) => { this.stderr = (this.stderr + String(chunk)).slice(-2000) })
+    const end = (why: string): void => {
+      this.alive = false
+      this.fail(new Error(this.stderr.trim().slice(-400) || why))
+    }
+    child.on('error', (err) => end(err.message))
+    child.on('exit', (code) => end(`Claude Code stopped (exit ${code ?? 'unknown'})`))
+    // A closed pipe after the process died must not crash the runtime.
+    child.stdin?.on('error', () => {})
+  }
+
+  send(text: string, timeoutMs: number): Promise<Record<string, unknown>> {
+    if (!this.alive) return Promise.reject(new Error(this.stderr.trim().slice(-400) || 'Claude Code is not running'))
+    if (this.pending) return Promise.reject(new Error('a planning step is already in flight'))
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.fail(new Error(`Claude Code took longer than ${Math.round(timeoutMs / 1000)}s to answer`))
+        this.close()
+      }, timeoutMs)
+      this.pending = { resolve, reject, timer }
+      this.child.stdin?.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n')
+    })
+  }
+
+  close(): void {
+    this.alive = false
+    this.child.stdin?.end()
+    if (this.child.exitCode === null) this.child.kill()
+  }
+
+  private read(chunk: string): void {
+    this.buffer += chunk
+    let newline: number
+    while ((newline = this.buffer.indexOf('\n')) >= 0) {
+      const line = this.buffer.slice(0, newline).trim()
+      this.buffer = this.buffer.slice(newline + 1)
+      if (!line) continue
+      let message: Record<string, unknown>
+      try {
+        message = JSON.parse(line) as Record<string, unknown>
+      } catch {
+        continue
       }
-    )
-    child.stdin?.end(input)
-  })
+      // Everything before the result (system init, assistant turns) is
+      // progress; the result carries the same envelope as --output-format json.
+      if (message.type === 'result' && this.pending) {
+        const { resolve, timer } = this.pending
+        clearTimeout(timer)
+        this.pending = null
+        resolve(message)
+      }
+    }
+  }
+
+  private fail(err: Error): void {
+    if (!this.pending) return
+    const { reject, timer } = this.pending
+    clearTimeout(timer)
+    this.pending = null
+    reject(err)
+  }
 }
 
 let cachedBin: string | null = null

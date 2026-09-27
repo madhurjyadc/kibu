@@ -21,7 +21,7 @@ import { choice, noul, type Jev } from './jev.js'
  * to maintain.
  */
 
-export type Action = 'find' | 'organize' | 'rename' | 'make' | 'open' | 'run' | 'web' | 'app' | 'other'
+export type Action = 'find' | 'organize' | 'rename' | 'make' | 'open' | 'run' | 'web' | 'app' | 'assist' | 'other'
 export type Kind = 'any' | 'video' | 'image' | 'audio' | 'document' | 'spreadsheet' | 'slides' | 'archive' | 'code'
 export type Size = 'any' | 'big' | 'huge'
 export type When = 'any' | 'today' | 'week' | 'month'
@@ -48,6 +48,7 @@ const ACTIONS: Record<Action, string> = {
   run: 'Run a specific command the user has dictated.',
   web: 'Visit a website, search the web, or do something in a browser.',
   app: 'Read or control a native Mac application that is already open.',
+  assist: 'Use the calendar, reminders, notes, email, a system setting or one of their Shortcuts.',
   other: 'None of these; this needs general-purpose planning.'
 }
 
@@ -221,6 +222,10 @@ function firstMatch<T extends string>(words: Set<string>, table: Record<T, strin
  * ambiguity Jev exists for, and is not guessed at.
  */
 function readLocally(request: string, hasDroppedPaths: boolean): Understanding | null {
+  // Reminders, calendar, notes, settings and shortcuts are named plainly, and
+  // are checked first: "remind me to check youtube" is a reminder, not a
+  // website, and "run my Focus shortcut" is not a shell command.
+  if (ASSIST.test(request)) return { ...BLANK, action: 'assist', confidence: 0.9 }
   if (/^\s*(?:run|execute|exec)\s+\S+/i.test(request)) {
     return { ...BLANK, action: 'run', confidence: 0.95 }
   }
@@ -289,6 +294,9 @@ function isWeb(request: string, words: Set<string>): boolean {
   )
 }
 
+const ASSIST =
+  /\b(remind me|set a reminder|add a reminder|reminders|to-?do list|on my calendar|to my calendar|my (?:calendar|schedule|agenda)|am i (?:free|busy)|when am i free|free (?:hour|slot|time)|what'?s next|schedule (?:a|an|my)|book (?:a|an)|dark mode|light mode|volume|mute|unmute|shortcut|make a note|take a note|jot down|save (?:this|that|it) to notes)\b|^\s*note:/i
+
 const BLANK = {
   kind: 'any',
   size: 'any',
@@ -317,7 +325,10 @@ function fallback(request: string, hasDroppedPaths: boolean): Understanding {
     size: firstMatch(words, SIZE_WORDS as Record<Size, string[]>) ?? 'any',
     when: firstMatch(words, WHEN_WORDS as Record<When, string[]>) ?? 'any',
     place: firstMatch(words, PLACE_WORDS as Record<Place, string[]>) ?? 'anywhere',
-    vague: action === 'other',
+    // Unrecognised is not the same as vague: "when is my first free hour
+    // tomorrow" is perfectly clear, just not a file task. Only a very short
+    // request with nothing recognisable in it is worth a question.
+    vague: action === 'other' && request.trim().split(/\s+/).length < 4 && !hasDroppedPaths,
     confidence: 0.4,
     source: 'local'
   }
@@ -407,9 +418,11 @@ export function routeFor(read: Understanding): { route: string; reason: string; 
       ? 'browser'
       : read.action === 'app'
         ? 'desktop'
-        : read.action === 'other'
-          ? 'unclear'
-          : 'files'
+        : read.action === 'assist'
+          ? 'apps'
+          : read.action === 'other'
+            ? 'unclear'
+            : 'files'
   return {
     route,
     reason: `read as "${read.action}" (${read.source})`,
