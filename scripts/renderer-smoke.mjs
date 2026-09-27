@@ -15,7 +15,10 @@ const artifacts = process.env.KIBU_SCREENSHOT_DIR || '/tmp/kibu-design'
 await mkdir(artifacts, { recursive: true })
 await page.addInitScript(() => {
   const listeners = {}
-  const state = { calls: [], history: [], failStart: false, ready: true, panel: { docked: false, pinned: false }, settings: { workflowsFirst: true, jevEnabled: true, confirmEveryAction: false, maxUsdPerTask: 1.5, shortcut: 'CommandOrControl+Shift+K', useClaudeCode: false } }
+  const state = { calls: [], history: [], failStart: false, ready: true, panel: { docked: false, pinned: false }, settings: { workflowsFirst: true, jevEnabled: true, confirmEveryAction: false, maxUsdPerTask: 1.5, shortcut: 'CommandOrControl+Shift+K', useClaudeCode: false, memoryEnabled: true, memoryLearn: true }, memories: [
+    { id: 'm1', text: 'My manager is Priya', kind: 'fact', keys: ['manager', 'priya'], source: 'told', evidence: 1, createdAt: 1, updatedAt: 2, lastUsedAt: null, uses: 2 },
+    { id: 'm2', text: 'Events like "Standup" go on the Work calendar', kind: 'choice', keys: ['standup'], choice: { decision: 'calendar', value: 'Work' }, source: 'learned', evidence: 2, createdAt: 1, updatedAt: 1, lastUsedAt: null, uses: 0 }
+  ] }
   window.__test = { state, emit: (event, payload) => (listeners[event] || []).forEach((f) => f(payload)) }
   const sub = (event) => (cb) => { (listeners[event] ||= []).push(cb); return () => { listeners[event] = listeners[event].filter((f) => f !== cb) } }
   window.kibu = {
@@ -34,7 +37,10 @@ await page.addInitScript(() => {
     setApiKey: async () => { state.calls.push(['key']); state.ready = true; return true }, setJevKey: async () => true,
     requestPermission: async () => {}, resizePanel: async () => {}, pauseTask: async (id) => state.calls.push(['pause', id]), resumeTask: async () => {}, cancelTask: async (id) => state.calls.push(['cancel', id]),
     getTask: async () => state.task, undoTask: async () => ({ reversed: 2, skipped: [] }), stopDesktopSession: async () => {},
-    openUrl: async (url) => state.calls.push(['url', url]), dragPanel: async (phase) => state.calls.push(['drag', phase]), centerPanel: async () => state.calls.push(['center']), openPath: async () => {}, revealPath: async () => {}, getPathForFile: () => '/test/file.txt', runBench: async () => []
+    openUrl: async (url) => state.calls.push(['url', url]), dragPanel: async (phase) => state.calls.push(['drag', phase]), centerPanel: async () => state.calls.push(['center']), openPath: async () => {}, revealPath: async () => {}, getPathForFile: () => '/test/file.txt', runBench: async () => [],
+    setPetInteractive: async () => {}, setPetHitRects: async () => {},
+    listMemories: async () => state.memories, deleteMemory: async (id) => { state.memories = state.memories.filter((m) => m.id !== id); state.calls.push(['forget', id]); return state.memories },
+    clearMemories: async () => { state.memories = []; state.calls.push(['forget-all']); return [] }, onMemoriesChanged: sub('memories')
   }
 })
 const task = {
@@ -90,6 +96,18 @@ try {
   await page.getByRole('button', { name: 'Save', exact: true }).first().click()
   await page.getByText('Saved to Keychain.').waitFor()
   await page.screenshot({ path: `${artifacts}/settings.png` })
+  // Memory: what is kept is visible in the person's own words, and each item can be forgotten.
+  await page.getByText('My manager is Priya').waitFor()
+  await page.getByText('I picked up').waitFor()
+  await page.getByText('My manager is Priya').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: `${artifacts}/memory.png` })
+  await page.getByRole('button', { name: 'Forget: My manager is Priya' }).click()
+  await page.waitForFunction(() => window.__test.state.calls.some((c) => c[0] === 'forget' && c[1] === 'm1'))
+  await page.getByText('My manager is Priya').waitFor({ state: 'detached' })
+  await page.getByRole('button', { name: 'Forget everything', exact: true }).click()
+  await page.getByText('Forget all 1?').waitFor()
+  await page.getByRole('button', { name: 'Forget everything', exact: true }).click()
+  await page.waitForFunction(() => window.__test.state.calls.some((c) => c[0] === 'forget-all'))
   await page.getByRole('button', { name: /Task in progress/ }).click()
   await page.getByRole('button', { name: 'Pause', exact: true }).click()
   assert.equal(await page.evaluate(() => window.__test.state.calls.filter((c) => c[0] === 'pause').length), 1)
@@ -160,6 +178,6 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Send task', exact: true }).isVisible(), true)
   await page.screenshot({ path: `${artifacts}/compact.png` })
   assert.deepEqual(errors, [], 'No renderer exceptions')
-  console.log('Renderer checks passed: minimal home, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the island and back, drag to move, compact layout.')
+  console.log('Renderer checks passed: minimal home, memory list and forgetting, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the island and back, drag to move, compact layout.')
   console.log(`Screenshots: ${artifacts}`)
 } finally { await browser.close(); await server.close() }

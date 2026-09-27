@@ -9,6 +9,7 @@
 import type {
   Authorization,
   Evidence,
+  Memory,
   Observation,
   PetState,
   PermissionStatus,
@@ -79,6 +80,11 @@ export const IPC = {
   petDropped: 'pet:dropped-paths',
   petClicked: 'pet:clicked',
   petInteractive: 'pet:interactive',
+  petHitRects: 'pet:hit-rects',
+  memoriesList: 'memory:list',
+  memoryDelete: 'memory:delete',
+  memoriesClear: 'memory:clear',
+  onMemories: 'memory:changed',
   desktopStop: 'desktop:stop',
   frontWindowGet: 'window:front',
   // main -> renderer (send)
@@ -122,6 +128,9 @@ export type HostToRuntime =
        * was in.
        */
       previousApp?: string | null
+      /** Everything remembered, when memory is on; the runtime picks what is relevant. */
+      memories?: Memory[]
+      memory?: { enabled: boolean; learn: boolean }
       /** Ask before every action, even inside an existing authorization. */
       confirmEveryAction: boolean
       /**
@@ -165,6 +174,13 @@ export type RuntimeToHost =
   | { type: 'desktop-release'; taskId: string }
   | { type: 'error'; message: string; fatal: boolean }
   | { type: 'bench-result'; rows: BenchRow[] }
+  /** A memory was saved, forgotten or used by a task. The host persists it. */
+  | { type: 'memory'; event: MemoryEvent }
+
+export type MemoryEvent =
+  | { type: 'save'; memory: Memory; replaces: string | null }
+  | { type: 'forget'; ids: string[] }
+  | { type: 'used'; ids: string[] }
 
 /** One measured path, with what it cost in time and money. */
 export interface BenchRow {
@@ -270,6 +286,11 @@ export interface KibuBridge {
   petClicked(): Promise<void>
   /** Whether the pet should currently catch the mouse, or let it pass through. */
   setPetInteractive(interactive: boolean): Promise<void>
+  setPetHitRects(rects: { x: number; y: number; width: number; height: number }[]): Promise<void>
+  listMemories(): Promise<Memory[]>
+  deleteMemory(id: string): Promise<Memory[]>
+  clearMemories(): Promise<Memory[]>
+  onMemoriesChanged(cb: (memories: Memory[]) => void): () => void
   dragPet(dx: number, dy: number): Promise<void>
   reportDroppedPaths(paths: string[]): Promise<void>
   stopDesktopSession(): Promise<void>
@@ -338,6 +359,10 @@ export interface Settings {
   panelY: number
   /** Whether the panel floats above other applications. */
   panelPinned: boolean
+  /** Remember things about the person across tasks. */
+  memoryEnabled: boolean
+  /** Also learn from what they do (a calendar they keep choosing), not only from what they say. */
+  memoryLearn: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -353,12 +378,15 @@ export const DEFAULT_SETTINGS: Settings = {
   petY: -1,
   panelX: -1,
   panelY: -1,
-  panelPinned: false
+  panelPinned: false,
+  memoryEnabled: true,
+  memoryLearn: true
 }
 
 export type {
   Authorization,
   Evidence,
+  Memory,
   Observation,
   PetState,
   PermissionStatus,

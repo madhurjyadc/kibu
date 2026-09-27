@@ -108,7 +108,8 @@ export const finishTask: ToolDefinition = {
         })
       )
       .default([]),
-    unresolved: z.string().optional().describe('What is still outstanding, if anything')
+    unresolved: z.string().optional().describe('What is still outstanding, if anything'),
+    usedMemories: z.array(z.string()).optional().describe('Ids of <memory> items you actually relied on, if any')
   }),
   scopes: () => [],
   async execute(i) {

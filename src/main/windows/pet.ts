@@ -72,11 +72,45 @@ export function createPetWindow(deps: PetWindowDeps, saved: { x: number; y: numb
   return win
 }
 
-/** Makes the pet solid to the mouse, or lets clicks pass through it again. */
+export interface HitRect { x: number; y: number; width: number; height: number }
+
+/**
+ * Whether the pet catches the mouse is decided here, in main, from the real
+ * cursor position, rather than by the renderer reacting to forwarded mouse
+ * moves. The renderer's way needed a round trip before the window turned
+ * solid, so a quick move-and-click landed on the desktop behind the pet and
+ * the click was simply lost.
+ */
+let hitRects: HitRect[] = []
+let held = false
+let solid = false
+
+function apply(win: BrowserWindow, wanted: boolean): void {
+  if (wanted === solid) return
+  solid = wanted
+  if (wanted) win.setIgnoreMouseEvents(false)
+  else win.setIgnoreMouseEvents(true, { forward: true })
+}
+
+/** The creature and bubble, in window coordinates, already padded by the renderer. */
+export function setPetHitRects(rects: HitRect[]): void {
+  hitRects = rects.filter((r) => [r.x, r.y, r.width, r.height].every(Number.isFinite)).slice(0, 4)
+}
+
+/** Holds the pet solid through a drag or a file drop, whatever the cursor does. */
 export function setPetInteractive(win: BrowserWindow | null, interactive: boolean): void {
   if (!win || win.isDestroyed()) return
-  if (interactive) win.setIgnoreMouseEvents(false)
-  else win.setIgnoreMouseEvents(true, { forward: true })
+  held = interactive
+  apply(win, held || solid)
+}
+
+/** Called on every cursor sample: solid exactly while the cursor is over the creature. */
+export function updatePetHitTest(win: BrowserWindow, cursor: { x: number; y: number }): void {
+  const b = win.getBounds()
+  const x = cursor.x - b.x
+  const y = cursor.y - b.y
+  const over = hitRects.some((r) => x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height)
+  apply(win, held || over)
 }
 
 export { PET_WIDTH, PET_HEIGHT }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { PetState, TaskState } from '../../shared/protocol.js'
 import { MOOD_FOR, Sprite, type Look, type Mood } from './components/Sprite.js'
 import { plainText } from './components/Markdown.js'
@@ -258,30 +258,42 @@ export function Pet(): React.JSX.Element {
   function onMouseDown(e: React.MouseEvent): void {
     if (bubbleRef.current?.contains(e.target as Node)) return
     dragRef.current = { startX: e.screenX, startY: e.screenY, moved: false, speed: 0 }
+    // A fast drag can outrun the window; stay solid until the button is up.
+    hold(true)
+  }
+
+  function hold(on: boolean): void {
+    if (on === solid.current) return
+    solid.current = on
+    void window.kibu.setPetInteractive(on)
   }
 
   /**
-   * The window is mostly empty air. It only catches the mouse while the
-   * pointer is actually on the creature or its speech bubble, so the rest of
-   * the rectangle stays click-through and Kibu never becomes a dead patch of
-   * desktop.
+   * The window is mostly empty air. Main makes it solid only while the cursor
+   * is over the creature or its bubble, from the real cursor position, so
+   * the rest stays click-through and a quick click is never lost. This tells
+   * main where those are, whenever they move or change size.
    */
-  function updateHitTest(clientX: number, clientY: number): void {
-    const pad = 30
-    const inside = (el: HTMLElement | null, p: number): boolean => {
-      const box = el?.getBoundingClientRect()
-      return !!box && clientX >= box.left - p && clientX <= box.right + p && clientY >= box.top - p && clientY <= box.bottom + p
+  const lastRects = useRef('')
+  useLayoutEffect(() => {
+    const pad = (el: HTMLElement | null, p: number) => {
+      const b = el?.getBoundingClientRect()
+      return b ? { x: b.left - p, y: b.top - p, width: b.width + p * 2, height: b.height + p * 2 } : null
     }
-    const over = inside(hitRef.current, pad) || inside(bubbleRef.current, 4)
-    setHovered(inside(hitRef.current, 0))
-    const wanted = over || dragRef.current !== null || dropping
-    if (wanted === solid.current) return
-    solid.current = wanted
-    void window.kibu.setPetInteractive(wanted)
+    const rects = [pad(hitRef.current, 14), pad(bubbleRef.current, 4)].filter((r): r is NonNullable<typeof r> => r !== null)
+    const key = JSON.stringify(rects.map((r) => [r.x, r.y, r.width, r.height].map(Math.round)))
+    if (key === lastRects.current) return
+    lastRects.current = key
+    void window.kibu.setPetHitRects(rects)
+  })
+
+  function updateHover(clientX: number, clientY: number): void {
+    const box = hitRef.current?.getBoundingClientRect()
+    setHovered(!!box && clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom)
   }
 
   function onMouseMove(e: React.MouseEvent): void {
-    updateHitTest(e.clientX, e.clientY)
+    updateHover(e.clientX, e.clientY)
     const drag = dragRef.current
     if (!drag) return
     const dx = e.screenX - drag.startX
@@ -304,7 +316,8 @@ export function Pet(): React.JSX.Element {
       feel('dizzy', 900)
       if (Math.random() < 0.5) after(900, () => say(reactions.carried(), 2600))
     }
-    updateHitTest(e.clientX, e.clientY)
+    hold(false)
+    updateHover(e.clientX, e.clientY)
     if (!drag || drag.moved) return
     poke()
     // A few quick taps is affection; a flurry of them tickles. Neither is a
@@ -320,6 +333,7 @@ export function Pet(): React.JSX.Element {
   function onDrop(e: React.DragEvent): void {
     e.preventDefault()
     setDropping(false)
+    hold(false)
     const paths = Array.from(e.dataTransfer.files).map((f) => window.kibu.getPathForFile(f)).filter(Boolean)
     if (paths.length === 0) return
     say(reactions.fed(paths.length), 2600)
@@ -358,17 +372,12 @@ export function Pet(): React.JSX.Element {
       onMouseMove={onMouseMove}
       onMouseLeave={() => {
         setHovered(false)
-        if (solid.current && !dragRef.current) {
-          solid.current = false
-          void window.kibu.setPetInteractive(false)
-        }
+        if (!dragRef.current) hold(false)
       }}
       onMouseUp={onMouseUp}
       onDragOver={(e) => { e.preventDefault(); setDropping(true) }}
-      onDragEnter={() => {
-        if (!solid.current) { solid.current = true; void window.kibu.setPetInteractive(true) }
-      }}
-      onDragLeave={() => setDropping(false)}
+      onDragEnter={() => hold(true)}
+      onDragLeave={() => { setDropping(false); hold(false) }}
       onDrop={onDrop}
     >
       {text && !dropping && (

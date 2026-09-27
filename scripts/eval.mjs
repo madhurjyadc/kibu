@@ -23,6 +23,7 @@ import { userTools } from '../dist-test/src/runtime/tools/user.js'
 import { desktopTools } from '../dist-test/src/runtime/tools/desktop.js'
 import { browserTools, ManagedBrowser } from '../dist-test/src/runtime/tools/browser.js'
 import { macTools } from '../dist-test/src/runtime/tools/mac.js'
+import { rememberTool } from '../dist-test/src/runtime/tools/memory.js'
 import { ClaudeCodePlanner } from '../dist-test/src/runtime/model/claude-code-planner.js'
 import { reverseMacChange } from '../dist-test/src/os/macos/scripting.js'
 import { createOsAdapter } from '../dist-test/src/os/index.js'
@@ -47,15 +48,22 @@ const CASES = [
   { id: 'reminders-question', request: 'how many reminders do I have open, and what are they?', path: 'planner' },
   { id: 'tab-to-note', request: 'save the title and link of the page I have open as a new note', path: 'planner' },
   { id: 'calendar-gap', request: 'when is my first free hour tomorrow between 9am and 6pm?', path: 'workflow' },
+  // Memory, in order: told, used by the planner, not used where it does not belong, forgotten.
+  { id: 'memory-tell', request: 'remember that my manager is Priya Shah', path: 'workflow', headline: /remember/i },
+  { id: 'memory-use', request: 'who is my manager?', path: 'planner', headline: /Priya/ },
+  { id: 'memory-unrelated', request: 'how many reminders do I have open?', path: 'planner', headline: /^(?![\s\S]*Priya)/ },
+  { id: 'memory-forget', request: 'forget who my manager is', path: 'workflow', headline: /Forgotten/ },
   { id: 'plan-evening', request: 'look at my calendar and reminders and tell me what I should focus on tomorrow', path: 'planner' }
 ]
 
 const filters = process.argv.slice(2)
 const cases = filters.length ? CASES.filter((c) => filters.some((f) => c.id.includes(f))) : CASES
 const jevKey = process.env.TYPESAFE_API_KEY ?? null
+/** A scratch memory for the run, never the app's real one. */
+let memories = []
 
 const registry = new ToolRegistry()
-registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools])
+registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools, rememberTool])
 const os = createOsAdapter(join(process.cwd(), 'resources/bin/kibu-helper'))
 const browser = new ManagedBrowser(join(homedir(), 'Library/Application Support/kibu/browser-profile-eval'), join(process.cwd(), 'downloads'), () => {})
 
@@ -86,11 +94,16 @@ async function runCase(c) {
     os, browser, registry, model: DEFAULT_MODEL_CONFIG, apiKey: null,
     jevEnabled: true, jevApiKey: jevKey, workflowsEnabled: true, droppedPaths: [],
     frontWindow: null, previousApp: 'Google Chrome', prefetchContext: true, previousTurn: null, confirmEveryAction: false,
+    memories, memory: { enabled: true, learn: true },
     createPlanner: () => planner
   }, {
     // Nobody is at the keyboard: a question ends the case, and is reported.
     onUpdate: (t) => { if (t.question) { const q = t.question; logs.push({ source: 'question', message: q.prompt }); queueMicrotask(() => runner.answer({ questionId: q.id, optionId: q.options?.find((o) => /allow|yes|use/i.test(o.label))?.id ?? null, text: 'you decide' })) } },
-    onPetState: () => {}, onLog: (e) => logs.push(e), claimDesktop: async () => {}, releaseDesktop: () => {}
+    onPetState: () => {}, onLog: (e) => logs.push(e), claimDesktop: async () => {}, releaseDesktop: () => {},
+    onMemory: (e) => {
+      if (e.type === 'save') memories = [...memories.filter((m) => m.id !== e.replaces && m.id !== e.memory.id), e.memory]
+      if (e.type === 'forget') memories = memories.filter((m) => !e.ids.includes(m.id))
+    }
   })
   const started = Date.now()
   const done = await runner.run()
@@ -108,8 +121,9 @@ async function runCase(c) {
   if (done.status !== 'succeeded') problems.push(`status ${done.status}`)
   if (path !== c.path) problems.push(`went the ${path} way, expected ${c.path}`)
   if (c.expect && !c.expect.test(JSON.stringify(done.actions.map((a) => a.input)))) problems.push('did not act on the right thing')
+  if (c.headline && !c.headline.test(headline)) problems.push('the answer was not what was expected')
   const jev = logs.filter((l) => l.source === 'jev').map((l) => l.message)
-  return { c, ms, path, plannerCalls, headline, problems, undone, jev, timing: logs.filter((l) => l.source === 'timing').map((l) => l.message), questions: logs.filter((l) => l.source === 'question').map((l) => l.message) }
+  return { c, ms, path, plannerCalls, headline, problems, undone, jev, memory: logs.filter((l) => l.source === 'memory').map((l) => l.message), timing: logs.filter((l) => l.source === 'timing').map((l) => l.message), questions: logs.filter((l) => l.source === 'question').map((l) => l.message) }
 }
 
 console.log(`Kibu eval — ${cases.length} cases, planner: Claude Code (${DEFAULT_MODEL_CONFIG.claudeCode}), Jev: ${jevKey ? 'on' : 'off (local rules)'}\n`)
@@ -124,6 +138,8 @@ for (const c of cases) {
   for (const p of r.problems) console.log(`    ! ${p}`)
   for (const q of r.questions) console.log(`    ? asked: ${q.replace(/\s+/g, ' ').slice(0, 120)}`)
   for (const t of r.timing) console.log(`    · ${t}`)
+  const recalled = r.memory?.find((m) => /recalled|nothing remembered/.test(m))
+  if (recalled) console.log(`    · memory: ${recalled.slice(0, 140)}`)
   const setup = r.jev.find((m) => /offering|widening/.test(m))
   if (setup) console.log(`    · ${setup}`)
   if (r.undone) console.log(`    · cleaned up ${r.undone} item${r.undone > 1 ? 's' : ''}`)

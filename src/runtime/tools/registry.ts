@@ -31,6 +31,8 @@ export interface ToolContext {
   claimDesktop(reason: string): Promise<void>
   releaseDesktop(): void
   browser: BrowserSession
+  /** Keeps a memory for future tasks. Absent when memory is off. */
+  remember?(text: string, about: string[], toldByUser: boolean): { saved: boolean; reason?: string }
 }
 
 /** Implemented in tools/browser.ts; declared here to avoid a cycle. */

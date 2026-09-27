@@ -9,7 +9,7 @@ import { Secrets } from './services/secrets.js'
 import { RuntimeHost } from './services/runtime-host.js'
 import { DesktopSession } from './services/desktop-session.js'
 import { undoTask } from './services/undo.js'
-import { createPetWindow, setPetInteractive } from './windows/pet.js'
+import { createPetWindow, setPetHitRects, setPetInteractive, updatePetHitTest } from './windows/pet.js'
 import {
   createPanelWindow,
   positionPanelNearPet,
@@ -127,6 +127,9 @@ function followCursor(): void {
     if (!petWindow || petWindow.isDestroyed()) return clearInterval(timer)
     if (!petWindow.isVisible()) return
     const at = screen.getCursorScreenPoint()
+    // The same sample decides whether the pet catches the mouse, so it is
+    // already solid by the time the pointer reaches it.
+    updatePetHitTest(petWindow, at)
     const b = petWindow.getBounds()
     const dx = Math.round(at.x - (b.x + b.width / 2))
     const dy = Math.round(at.y - (b.y + b.height * 0.62))
@@ -134,7 +137,7 @@ function followCursor(): void {
     if (key === last) return
     last = key
     petWindow.webContents.send(IPC.onCursor, { dx, dy })
-  }, 60)
+  }, 30)
 }
 
 function setPetState(state: PetState): void {
@@ -230,6 +233,8 @@ function startTask(req: StartTaskRequest): TaskState {
     model: { ...DEFAULT_MODEL_CONFIG, claudeCode: settings.claudeCodeModel },
     frontWindow: req.includeFrontWindow ? lastFrontWindow : null,
     previousApp: lastFrontWindow?.name ?? null,
+    memories: settings.memoryEnabled ? store.listMemories() : [],
+    memory: { enabled: settings.memoryEnabled, learn: settings.memoryEnabled && settings.memoryLearn },
     confirmEveryAction: settings.confirmEveryAction,
     workflowsEnabled: settings.workflowsFirst,
     useClaudeCode: planViaClaudeCode,
@@ -264,6 +269,14 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
     case 'pet-state':
       setPetState(msg.state)
       break
+    case 'memory': {
+      const e = msg.event
+      if (e.type === 'save') store.saveMemory(e.memory, e.replaces)
+      else if (e.type === 'forget') store.deleteMemories(e.ids)
+      else store.markMemoriesUsed(e.ids)
+      broadcast(IPC.onMemories, store.listMemories())
+      break
+    }
     case 'log': {
       if (store.isDeleted(msg.entry.taskId)) break
       store.appendLog(msg.entry)
@@ -308,11 +321,22 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
 
 function togglePanel(focusInput = true): void {
   if (!panelWindow || panelWindow.isDestroyed()) return
-  if (!panelWindow.isVisible()) void captureFrontWindow()
+  // Whatever you were in before this click is "the previous app", whether the
+  // panel was hidden or just behind it.
+  if (!panelWindow.isVisible() || !panelWindow.isFocused()) void captureFrontWindow()
   if (panelWindow.isVisible()) {
     // Docked, the panel is a handle on the edge of the screen: the shortcut
     // should open it out, not put it away.
     if (isPanelDocked()) {
+      showPanel()
+      if (focusInput) panelWindow.webContents.send(IPC.onFocusInput)
+      return
+    }
+    // Open but behind whatever you were working in is not "open" to you. A
+    // click on the pet then means "show me", and hiding the panel instead
+    // looked like the click had done nothing. It only puts the panel away
+    // when you are actually using it.
+    if (!panelWindow.isFocused()) {
       showPanel()
       if (focusInput) panelWindow.webContents.send(IPC.onFocusInput)
       return
@@ -648,6 +672,21 @@ function registerIpc(): void {
     panelWindow.webContents.send(IPC.onFocusInput)
   })
   ipcMain.handle(IPC.petInteractive, (_e, v: unknown) => setPetInteractive(petWindow, !!v))
+  ipcMain.handle(IPC.memoriesList, () => store.listMemories())
+  ipcMain.handle(IPC.memoryDelete, (_e, id: unknown) => {
+    if (typeof id === 'string') store.deleteMemories([id])
+    const all = store.listMemories()
+    broadcast(IPC.onMemories, all)
+    return all
+  })
+  ipcMain.handle(IPC.memoriesClear, () => {
+    store.clearMemories()
+    broadcast(IPC.onMemories, [])
+    return []
+  })
+  ipcMain.handle(IPC.petHitRects, (_e, rects: unknown) => {
+    if (Array.isArray(rects)) setPetHitRects(rects as { x: number; y: number; width: number; height: number }[])
+  })
 
   ipcMain.handle(IPC.petDrag, (_e, delta: { dx: number; dy: number }) => {
     if (!petWindow || petWindow.isDestroyed()) return

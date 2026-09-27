@@ -1,7 +1,9 @@
 import { choice } from '../model/jev.js'
 import { describeTime, readTime, stripTime, type TimeReading } from '../when.js'
 import type { CalendarEvent, ScreenContext } from '../tools/mac.js'
-import type { Evidence } from '../../shared/types.js'
+import type { Evidence, Memory } from '../../shared/types.js'
+import { learnedChoice, suggestChoice } from '../memory.js'
+import { aboutWords } from './memory.js'
 import type { Workflow, WorkflowContext, WorkflowResult } from './types.js'
 
 /**
@@ -110,16 +112,26 @@ export const reminderWorkflow: Workflow = {
       const named = lists
         .filter((n) => new RegExp(`\\b${escapeRe(n)}\\b`, 'i').test(request))
         .sort((a, b) => Number(generic(a)) - Number(generic(b)) || b.length - a.length)[0]
+      // Not named this time: the list this kind of reminder went on before, if any.
+      const remembered = named ? null : suggestChoice('reminder-list', title, ctx.memory.all(), lists)
+      const list = named ?? remembered?.choice?.value
       const made = await runOrFail<{ list: string }>(ctx, 'reminders_create', {
         title,
         ...(due ? { due: due.toISOString() } : {}),
-        ...(named ? { list: named } : {})
+        ...(list ? { list } : {})
       })
       const when = due ? ` ${describeTime(due, reading?.dateOnly)}` : ''
+      const evidence: Evidence[] = [{ kind: 'text', label: `Reminders · ${made.list}`, value: `${title}${when ? ` —${when}` : ''}` }]
+      if (remembered) evidence.push(ctx.memory.used(remembered))
+      // Naming a specific list is a choice worth keeping for next time.
+      if (named && !generic(named) && ctx.memory.learn) {
+        const m = learnedChoice('reminder-list', named, title, `Reminders like "${title}" go on the ${named} list`)
+        if (m) ctx.memory.keep(m)
+      }
       return {
         success: true,
-        headline: `I'll remind you: ${title}${when}.`,
-        evidence: [{ kind: 'text', label: `Reminders · ${made.list}`, value: `${title}${when ? ` —${when}` : ''}` }]
+        headline: `I'll remind you: ${title}${when}${remembered ? ` (on ${made.list}, like last time)` : ''}.`,
+        evidence
       }
     } catch (err) {
       return failed(err)
@@ -164,7 +176,13 @@ export const eventWorkflow: Workflow = {
         // Calendars macOS keeps for itself are never where a new event belongs.
         .filter((c) => c.writable && !/^(scheduled reminders|siri suggestions|birthdays|found in (mail|apps))$/i.test(c.name))
         .map((c) => c.name)
-      const calendar = await pickNamed(ctx, 'pick_calendar', request, calendars, 'Which calendar does this event belong on?', calendars[0] ?? null)
+      const named = calendars
+        .filter((n) => new RegExp(`\\b${escapeRe(n)}\\b`, 'i').test(request))
+        .sort((a, b) => b.length - a.length)[0]
+      // Not named this time: where this kind of event went before, else Jev's pick.
+      const remembered: Memory | null = named ? null : suggestChoice('calendar', title, ctx.memory.all(), calendars)
+      const calendar = named ?? remembered?.choice?.value ??
+        (await pickNamed(ctx, 'pick_calendar', request, calendars, 'Which calendar does this event belong on?', calendars[0] ?? null))
 
       // A heads-up about clashes costs one read and saves a double booking.
       const clashes = reading.dateOnly
@@ -177,10 +195,17 @@ export const eventWorkflow: Workflow = {
       })
       const when = describeTime(start, reading.dateOnly)
       const clash = clashes.filter((e) => !e.allDay)[0]
+      const evidence: Evidence[] = [{ kind: 'text', label: `Calendar${calendar ? ` · ${calendar}` : ''}`, value: `${title} — ${when}` }]
+      if (remembered) evidence.push(ctx.memory.used(remembered))
+      // Naming the calendar is the person's choice; keep it for events like this one.
+      if (named && calendars.length > 1 && ctx.memory.learn) {
+        const m = learnedChoice('calendar', named, title, `Events like "${title}" go on the ${named} calendar`)
+        if (m) ctx.memory.keep(m)
+      }
       return {
         success: true,
-        headline: `Added "${title}" ${when}${calendar ? ` to ${calendar}` : ''}.${clash ? ` Heads up — it overlaps "${clash.title}".` : ''}`,
-        evidence: [{ kind: 'text', label: `Calendar${calendar ? ` · ${calendar}` : ''}`, value: `${title} — ${when}` }]
+        headline: `Added "${title}" ${when}${calendar ? ` to ${calendar}` : ''}${remembered ? ', like last time' : ''}.${clash ? ` Heads up — it overlaps "${clash.title}".` : ''}`,
+        evidence
       }
     } catch (err) {
       return failed(err)
@@ -417,7 +442,12 @@ export const shortcutWorkflow: Workflow = {
       if (names.length === 0) return { success: false, headline: "You don't have any shortcuts yet.", evidence: [] }
       const named = names.filter((n) => new RegExp(`\\b${escapeRe(n)}\\b`, 'i').test(request)).sort((a, b) => b.length - a.length)[0]
       let pick = named ?? null
+      // "focus mode" → the shortcut it meant last time.
+      const remembered = named ? null : suggestChoice('shortcut', request, ctx.memory.all(), names)
+      if (remembered) pick = remembered.choice!.value
+      let guessed = false
       if (!pick) {
+        guessed = true
         const options: Record<string, string> = { none: 'None of these is the one the user means.' }
         names.slice(0, 60).forEach((n, i) => { options[`s${i}`] = n })
         const answers = await ctx.ask('pick_shortcut', { userRequest: request }, { pick: choice('Which shortcut does the user want to run?', options) })
@@ -429,6 +459,13 @@ export const shortcutWorkflow: Workflow = {
       }
       const out = await runOrFail<{ output: string }>(ctx, 'shortcuts_run', { name: pick })
       const evidence: Evidence[] = out.output.trim() ? [{ kind: 'text', label: `${pick} said`, value: out.output.trim().slice(0, 1500) }] : []
+      if (remembered) evidence.push(ctx.memory.used(remembered))
+      // A shortcut found from other words: keep the words, so next time needs no guessing.
+      if (guessed && ctx.memory.learn) {
+        const about = aboutWords(request).join(' ')
+        const m = learnedChoice('shortcut', pick, about, `"${about}" means your ${pick} shortcut`)
+        if (m && ctx.memory.keep(m)) evidence.push({ kind: 'text', label: 'Remembered', value: m.text })
+      }
       return { success: true, headline: `Ran "${pick}".`, evidence }
     } catch (err) {
       return failed(err)

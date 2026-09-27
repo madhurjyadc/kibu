@@ -14,6 +14,7 @@ import { userTools } from './tools/user.js'
 import { desktopTools } from './tools/desktop.js'
 import { browserTools, ManagedBrowser } from './tools/browser.js'
 import { macTools } from './tools/mac.js'
+import { rememberTool } from './tools/memory.js'
 import { TaskRunner } from './loop/task-runner.js'
 import { ClaudeCodePlanner } from './model/claude-code-planner.js'
 import { runBench } from './bench.js'
@@ -35,7 +36,7 @@ const browser = new ManagedBrowser(profileDir, downloadDir, (level, message) =>
 )
 
 const registry = new ToolRegistry()
-registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools])
+registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools, rememberTool])
 
 let runner: TaskRunner | null = null
 
@@ -77,6 +78,8 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
       frontWindow: msg.frontWindow,
       previousApp: msg.previousApp ?? null,
       prefetchContext: true,
+      memories: msg.memories ?? [],
+      memory: msg.memory ?? { enabled: false, learn: false },
       confirmEveryAction: msg.confirmEveryAction,
       previousTurn: msg.previousTurn,
       droppedPaths
@@ -85,6 +88,7 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
       onUpdate: (task: TaskState) => send({ type: 'task-update', task }),
       onPetState: (state: PetState) => send({ type: 'pet-state', state }),
       onLog: (entry: LogEntry) => send({ type: 'log', entry }),
+      onMemory: (event) => send({ type: 'memory', event }),
       ...desktopHooks
     }
   )

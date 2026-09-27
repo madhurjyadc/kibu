@@ -54,6 +54,14 @@ export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: 
     },
     {
       kind: 'text',
+      label: 'Memory',
+      value:
+        'Tell me "remember that …" and I will, and I pick up choices you repeat, like which calendar standups ' +
+        'go on. I only bring something up when it helps with what you asked. Ask what I remember, or say ' +
+        '"forget …", any time.'
+    },
+    {
+      kind: 'text',
       label: 'Your Mac',
       value: canSeeApps
         ? 'Read what is in a window and press its buttons or fill its fields through accessibility, rather ' +

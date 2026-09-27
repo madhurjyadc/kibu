@@ -1,5 +1,5 @@
 import type { Questions, SystemOneResult, EntryType } from '@typesafe-ai/sdk'
-import type { Evidence, TaskState, UserQuestion } from '../../shared/types.js'
+import type { Evidence, Memory, TaskState, UserQuestion } from '../../shared/types.js'
 import type { Understanding } from '../model/understand.js'
 
 /**
@@ -31,6 +31,20 @@ export interface WorkflowContext {
   authorizedRoots(): string[]
   /** How the request was read: kind, size, time, place. Computed once. */
   understanding(): Understanding
+  memory: MemoryAccess
+}
+
+/** What a workflow may do with memory. Everything is a no-op when memory is off. */
+export interface MemoryAccess {
+  enabled: boolean
+  /** Whether Kibu may learn from what the user does, not only from what they say. */
+  learn: boolean
+  all(): Memory[]
+  /** Saves (or folds into an existing one). Returns null when refused. */
+  keep(memory: Memory): Memory | null
+  forget(ids: string[]): void
+  /** Marks a memory as used for this task, and shows it in the result. */
+  used(memory: Memory): Evidence
 }
 
 export interface WorkflowResult {

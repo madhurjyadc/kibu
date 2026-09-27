@@ -138,6 +138,35 @@ export interface UndoEntry {
   reversed?: boolean
 }
 
+/**
+ * Something Kibu knows about the person, kept on this Mac.
+ *
+ * Told memories are things they said ("remember that my manager is Priya").
+ * Learned ones come from what they do: a choice they made more than once, like
+ * which calendar standups go on. Either kind reaches a task only when it is
+ * relevant to that task.
+ */
+export interface Memory {
+  id: string
+  /** One plain sentence, the way the person would say it. */
+  text: string
+  kind: 'fact' | 'preference' | 'choice'
+  /** Words that make it relevant: names, places, apps, topics. Lower case. */
+  keys: string[]
+  /**
+   * For a learned default: which decision it answers, and with what. For
+   * example `{ decision: 'calendar', value: 'Work' }` with keys ["standup"].
+   */
+  choice?: { decision: string; value: string }
+  source: 'told' | 'learned'
+  /** Times it was seen or confirmed. A learned choice is trusted from 1. */
+  evidence: number
+  createdAt: number
+  updatedAt: number
+  lastUsedAt: number | null
+  uses: number
+}
+
 export interface CostRecord {
   inputTokens: number
   outputTokens: number

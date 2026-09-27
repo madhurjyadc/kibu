@@ -4,9 +4,10 @@ import { findWorkflow } from './find.js'
 import { renameWorkflow } from './rename.js'
 import { commandWorkflow } from './command.js'
 import { assistWorkflows } from './assist.js'
+import { memoryWorkflow } from './memory.js'
 import type { Workflow, WorkflowContext } from './types.js'
 
-export const WORKFLOWS: Workflow[] = [...assistWorkflows, organizeWorkflow, findWorkflow, renameWorkflow, commandWorkflow]
+export const WORKFLOWS: Workflow[] = [memoryWorkflow, ...assistWorkflows, organizeWorkflow, findWorkflow, renameWorkflow, commandWorkflow]
 
 export interface WorkflowMatch {
   workflow: Workflow

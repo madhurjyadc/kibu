@@ -33,7 +33,14 @@ eval. Run `TYPESAFE_API_KEY=… npm run eval` to cover it. The Anthropic API
 planner path, Mail drafts (they open a window) and running a shortcut (there
 were none to run) were also not exercised live.
 
-## Verified by automated tests (`npm test` — 195 tests, all passing)
+### Memory (27 September 2026)
+
+Live, with Claude Code planning and a scratch memory: telling Kibu a fact,
+the planner answering from it ("who is my manager?" → from memory, 3.1s), an
+unrelated request getting no memory at all, and forgetting it. Recall ran on
+the local rules; Jev's relevance judgement is covered only by a stubbed test.
+
+## Verified by automated tests (`npm test` — 214 tests, all passing)
 
 ### Authorization (`test/files.test.ts`)
 - A path inside a granted root is allowed; a path outside is reported as a

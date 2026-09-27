@@ -346,3 +346,8 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 @media(max-width:560px) { .hints { display: none; } .row-hint { display: none; } }
 @media(max-width:500px) { .prompt textarea { font-size: 16px; } .bar-face { width: 40px; } .bar-face .kb-sprite { width: 38px; height: 36px; } .row>span { width: 110px; } .status-text { display: none; } }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation: none!important; transition: none!important; } }
+
+.memory-group { margin-top: 14px !important; font: 700 10px var(--mono) !important; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); }
+.memories { list-style: none; padding: 0; margin: 6px 0 0; } .memories li { display: flex; align-items: flex-start; gap: 12px; padding: 7px 0; font-size: 13px; line-height: 1.45; border-top: 1px solid var(--hair); } .memories li:first-child { border-top: 0; } .memories li>span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.memories button, .memory-actions button { flex: none; color: var(--dim); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; padding-top: 2px; } .memories button:hover, .memory-actions button:hover { color: var(--lime); } .memory-actions button.bad { color: var(--bad); }
+.memory-actions { display: flex; align-items: center; gap: 14px; margin-top: 10px; font-size: 12px; }

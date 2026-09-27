@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { isTerminal } from '../../shared/types.js'
-import type { ActionRecord, TaskState, UndoEntry } from '../../shared/types.js'
+import type { ActionRecord, Memory, TaskState, UndoEntry } from '../../shared/types.js'
 import type { LogEntry, TaskSummaryRow } from '../../shared/protocol.js'
 
 /**
@@ -61,6 +61,11 @@ export class Store {
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS memories (
+        id TEXT PRIMARY KEY,
+        updated_at INTEGER NOT NULL,
+        memory_json TEXT NOT NULL
       );
     `)
   }
@@ -220,6 +225,52 @@ export class Store {
       message: r.message,
       data: r.data_json ? JSON.parse(r.data_json) : undefined
     }))
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Memory: what Kibu knows about the person. Only on this Mac.
+   * ---------------------------------------------------------------- */
+
+  listMemories(): Memory[] {
+    const rows = this.db.prepare('SELECT memory_json FROM memories ORDER BY updated_at DESC LIMIT 1000').all() as { memory_json: string }[]
+    return rows.map((r) => JSON.parse(r.memory_json) as Memory)
+  }
+
+  saveMemory(memory: Memory, replaces: string | null = null): void {
+    this.atomically(() => {
+      if (replaces && replaces !== memory.id) this.db.prepare('DELETE FROM memories WHERE id = ?').run(replaces)
+      this.db
+        .prepare('INSERT INTO memories (id, updated_at, memory_json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at, memory_json = excluded.memory_json')
+        .run(memory.id, memory.updatedAt, JSON.stringify(memory))
+    })
+  }
+
+  deleteMemories(ids: string[]): void {
+    const stmt = this.db.prepare('DELETE FROM memories WHERE id = ?')
+    this.atomically(() => { for (const id of ids) stmt.run(id) })
+  }
+
+  private atomically(fn: () => void): void {
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      fn()
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  clearMemories(): void {
+    this.db.prepare('DELETE FROM memories').run()
+  }
+
+  /** Counts a use, so the memories that keep helping rank first. */
+  markMemoriesUsed(ids: string[]): void {
+    const now = Date.now()
+    for (const m of this.listMemories().filter((x) => ids.includes(x.id))) {
+      this.saveMemory({ ...m, uses: m.uses + 1, lastUsedAt: now })
+    }
   }
 
   getSetting(key: string): string | null {

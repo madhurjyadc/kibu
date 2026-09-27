@@ -3,6 +3,7 @@ import type { ZodType } from 'zod'
 import { Planner, addCost, type PlannerLike } from '../model/planner.js'
 import { Jev, summarizeJev, type Family, type PlanSetup } from '../model/jev.js'
 import { MAC_FAMILIES, gatherContext } from '../tools/mac.js'
+import { looksSecret, makeMemory, memoryNote, mergeMemory, recall } from '../memory.js'
 import { routeToWorkflow, type WorkflowContext } from '../workflows/index.js'
 import { describeSelf, isAboutKibu } from './about.js'
 import { fallbackUnderstanding, routeFor, understand, type Understanding } from '../model/understand.js'
@@ -16,6 +17,7 @@ import { StaleElementError, UnsupportedCapabilityError } from '../../os/adapter.
 import type {
   ActionRecord,
   Evidence,
+  Memory,
   Observation,
   PetState,
   TaskState,
@@ -23,7 +25,7 @@ import type {
   UserQuestion,
   VerificationResult
 } from '../../shared/types.js'
-import type { AnswerPayload, FrontWindow, LogEntry, ModelConfig, PreviousTurn } from '../../shared/protocol.js'
+import type { AnswerPayload, FrontWindow, LogEntry, MemoryEvent, ModelConfig, PreviousTurn } from '../../shared/protocol.js'
 
 export class CancelledError extends Error {
   constructor() {
@@ -46,7 +48,11 @@ export interface RunnerHooks {
   /** Called when the runtime wants exclusive control of the real desktop. */
   claimDesktop(taskId: string, reason: string): Promise<void>
   releaseDesktop(taskId: string): void
+  /** Memory changed: saved (possibly replacing one), forgotten, or used by this task. */
+  onMemory?(event: MemoryEvent): void
 }
+
+export type { MemoryEvent }
 
 export interface RunnerDeps {
   os: OsAdapter
@@ -68,6 +74,9 @@ export interface RunnerDeps {
    * the request points at them. Off in tests, which must never script real apps.
    */
   prefetchContext?: boolean
+  /** Everything remembered, when memory is on. The runner decides what is relevant. */
+  memories?: Memory[]
+  memory?: { enabled: boolean; learn: boolean }
   /** The exchange just before this one, when there was a recent one. */
   previousTurn: PreviousTurn | null
   confirmEveryAction: boolean
@@ -126,6 +135,11 @@ export class TaskRunner {
   private holdsDesktop = false
   /** How this request was read. Computed once, in understand(). */
   private read: Understanding | null = null
+  /** This task's view of memory, kept current as it saves and forgets. */
+  private memories: Memory[] = []
+  /** Memories shown to the planner, by id, so finish can cite them. */
+  private offeredMemories = new Map<string, Memory>()
+  private usedMemoryIds = new Set<string>()
 
   constructor(
     public readonly task: TaskState,
@@ -135,6 +149,50 @@ export class TaskRunner {
     // The planner is built on first use, so a task handled entirely by a
     // workflow never constructs it — and never needs an Anthropic key.
     this.jev = new Jev(deps.jevApiKey, deps.jevEnabled, deps.model.jev, deps.jevFetch)
+    this.memories = this.memoryOn ? [...(deps.memories ?? [])] : []
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Memory
+   * ---------------------------------------------------------------- */
+
+  private get memoryOn(): boolean {
+    return this.deps.memory?.enabled ?? false
+  }
+
+  /**
+   * Saves a memory, folding it into a near-duplicate if there is one. Secrets
+   * are refused here, whoever asked; learned (not told) memories are refused
+   * when the person has turned learning off.
+   */
+  private keepMemory(memory: Memory): Memory | null {
+    if (!this.memoryOn) return null
+    if (memory.source === 'learned' && !this.deps.memory?.learn) return null
+    const secret = looksSecret(memory.text)
+    if (secret) {
+      this.log('warn', 'memory', `refused to remember ${secret}`)
+      return null
+    }
+    const { memory: kept, replaces } = mergeMemory(this.memories, memory)
+    this.memories = [...this.memories.filter((m) => m.id !== replaces), kept]
+    this.hooks.onMemory?.({ type: 'save', memory: kept, replaces })
+    this.log('info', 'memory', `${replaces ? 'updated' : 'remembered'}: ${kept.text}`)
+    return kept
+  }
+
+  private forgetMemories(ids: string[]): void {
+    if (ids.length === 0) return
+    this.memories = this.memories.filter((m) => !ids.includes(m.id))
+    this.hooks.onMemory?.({ type: 'forget', ids })
+  }
+
+  /** A memory this task relied on: counted, and shown in the result so it can be corrected. */
+  private useMemory(memory: Memory): Evidence {
+    if (!this.usedMemoryIds.has(memory.id)) {
+      this.usedMemoryIds.add(memory.id)
+      this.hooks.onMemory?.({ type: 'used', ids: [memory.id] })
+    }
+    return { kind: 'text', label: 'From memory', value: memory.text }
   }
 
   /** Builds the planning model on first use. Throws if no key is configured. */
@@ -493,7 +551,15 @@ export class TaskRunner {
       log: (level, message, data) => this.log(level, 'workflow', message, data),
       checkpoint: () => this.checkpoint(),
       understanding: () => this.read ?? fallbackUnderstanding(),
-      authorizedRoots: () => [...this.task.authorization.writeRoots, ...this.task.authorization.readRoots]
+      authorizedRoots: () => [...this.task.authorization.writeRoots, ...this.task.authorization.readRoots],
+      memory: {
+        enabled: this.memoryOn,
+        learn: this.memoryOn && (this.deps.memory?.learn ?? false),
+        all: () => this.memories,
+        keep: (m) => this.keepMemory(m),
+        forget: (ids) => this.forgetMemories(ids),
+        used: (m) => this.useMemory(m)
+      }
     }
   }
 
@@ -529,6 +595,22 @@ export class TaskRunner {
 
     const app = this.deps.previousApp ?? this.deps.frontWindow?.name ?? null
     if (app) this.planner.addNote(`The user was in ${app} when they asked.`)
+
+    // Only what is relevant to this request; everything else stays unsaid.
+    if (this.memoryOn && this.memories.length) {
+      const recalled = await recall(this.task.request, this.memories, this.jev.available ? this.jev : null)
+      for (const r of recalled) this.offeredMemories.set(r.memory.id, r.memory)
+      this.log('info', 'memory', recalled.length ? `recalled ${recalled.map((r) => `"${r.memory.text}" (${r.why})`).join(', ')}` : 'nothing remembered is relevant')
+      const note = memoryNote(recalled)
+      if (note) this.planner.addNote(note)
+    }
+    if (this.memoryOn) {
+      this.planner.addNote(
+        this.deps.memory?.learn
+          ? 'If the user states a preference, or answers a question in a way that will clearly apply next time, keep it with remember.'
+          : 'Only use remember when the user explicitly asks you to remember something.'
+      )
+    }
 
     const want = setup.context
     if (this.deps.prefetchContext && (want.selection || want.tab || want.finder || want.clipboard)) {
@@ -774,12 +856,12 @@ export class TaskRunner {
       this.emit()
 
       if (call.name === 'finish') {
-        this.completeFrom(outcome.result as {
-          success: boolean
-          headline: string
-          evidence: Evidence[]
-          unresolved?: string
-        })
+        const finished = outcome.result as { success: boolean; headline: string; evidence: Evidence[]; unresolved?: string; usedMemories?: string[] }
+        for (const id of finished.usedMemories ?? []) {
+          const m = this.offeredMemories.get(id)
+          if (m) this.evidence.push(this.useMemory(m))
+        }
+        this.completeFrom(finished)
         return { content: 'Task closed.', isError: false, finished: true }
       }
 
@@ -995,7 +1077,15 @@ export class TaskRunner {
         await this.hooks.claimDesktop(this.task.id, reason)
         this.holdsDesktop = true
       },
-      releaseDesktop: () => this.dropDesktop()
+      releaseDesktop: () => this.dropDesktop(),
+      ...(this.memoryOn
+        ? {
+            remember: (text: string, about: string[], toldByUser: boolean) => {
+              const kept = this.keepMemory(makeMemory(text, toldByUser ? 'preference' : 'choice', toldByUser ? 'told' : 'learned', { keys: about.map((a) => a.toLowerCase()) }))
+              return kept ? { saved: true } : { saved: false, reason: 'not kept: it looked private, or learning is off' }
+            }
+          }
+        : {})
     }
   }
 

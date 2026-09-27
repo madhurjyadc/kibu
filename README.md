@@ -309,6 +309,32 @@ local verdict — so its value can be measured rather than assumed.
 
 ---
 
+## Memory
+
+Kibu gets more useful the more you use it, without dragging the past into
+every request.
+
+- **Told:** "remember that my manager is Priya", "from now on, invoices go in
+  Finance". Handled in code, instantly.
+- **Learned:** choices you make yourself. Naming a calendar for "standup" once
+  means the next "standup friday 9am" goes there too, and the result says
+  "like last time" with a *From memory* line. A shortcut Kibu had to work out
+  from your words is remembered under those words. Defaults Kibu guessed are
+  never learned — only choices you made.
+- **Relevant only.** Before a task, local code shortlists memories sharing a
+  word or topic with the request; Jev then answers one yes/no per memory
+  ("would knowing this help?"), in a single call. Without Jev, a memory must
+  share a distinctive word. The planner is told to use what it is given only
+  where it helps and never to mention the rest, and to cite what it relied on,
+  which shows in the result so a wrong memory can be caught.
+- **Yours.** "What do you remember about me", "forget that …", "forget
+  everything"; or Settings → Memory, where each item can be forgotten and
+  learning or memory can be turned off. Stored in the local database only.
+  Passwords, codes, keys, card and ID numbers are refused in code, whoever asks.
+
+`src/runtime/memory.ts` holds the rules; `src/runtime/workflows/memory.ts` the
+told/forget/list conversation.
+
 ## Privacy and cost
 
 Kibu **uses cloud models, so it is not an offline app.**
@@ -350,7 +376,7 @@ and anything done through synthetic input are not reversible.
 npm test
 ```
 
-195 tests covering authorization, file operations, the task loop, the
+214 tests covering memory (what is kept, refused, recalled and forgotten), authorization, file operations, the task loop, the
 planner-free workflows (files and apps), time reading, Jev's request shape and
 caution-clamping, the planner's tool narrowing and widening, the persistent
 Claude Code session, undo, crash recovery, and a real browser workflow against
