@@ -91,6 +91,8 @@ export const IPC = {
   panelCenter: 'panel:center',
   panelDrag: 'panel:drag',
   petCompose: 'pet:compose',
+  petMenu: 'pet:menu',
+  onPetPlay: 'pet:play',
   onSeed: 'panel:seed',
   onTaskUpdate: 'task:update',
   onPetState: 'pet:state',
@@ -161,6 +163,9 @@ export interface AnswerPayload {
   text?: string
   grant?: Partial<Authorization>
 }
+
+/** Things to do with the pet from its menu, like the website's playground. */
+export type PetPlay = 'dance' | 'nap' | 'wake' | 'surprise'
 
 export type RuntimeToHost =
   | { type: 'ready' }
@@ -276,6 +281,9 @@ export interface KibuBridge {
   dragPanel(phase: 'start' | 'move' | 'end'): Promise<void>
   /** Opens the panel with a request typed in but not sent, e.g. from a bubble suggestion. */
   petCompose(text: string): Promise<void>
+  /** The pet's right-click menu. `napping` swaps Little nap for Wake up. */
+  showPetMenu(napping: boolean): Promise<void>
+  onPetPlay(cb: (action: PetPlay) => void): () => void
   /** A request to place in the composer without sending it. */
   onSeed(cb: (text: string) => void): () => void
   /** Collapses the panel to the edge handle, or opens it back out. */
@@ -283,7 +291,8 @@ export interface KibuBridge {
   /** Whether the panel should float above other applications. */
   pinPanel(pinned: boolean): Promise<void>
   getPanelState(): Promise<PanelState>
-  petClicked(): Promise<void>
+  /** `pressedAt` is when the button went down, in epoch ms: main judges the panel's state as it was then. */
+  petClicked(pressedAt?: number): Promise<void>
   /** Whether the pet should currently catch the mouse, or let it pass through. */
   setPetInteractive(interactive: boolean): Promise<void>
   setPetHitRects(rects: { x: number; y: number; width: number; height: number }[]): Promise<void>

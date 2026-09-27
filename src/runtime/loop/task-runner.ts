@@ -95,18 +95,22 @@ export function isNarration(text: string): boolean {
 const ROUTE_CAPABILITIES: Record<string, string[]> = {
   files: ['files', 'shell', 'user.interact', 'mac.read'],
   desktop: ['files.read', 'shell', 'desktop', 'mac', 'user.interact'],
-  browser: ['files.read', 'browser', 'mac.read', 'user.interact'],
+  browser: ['files.read', 'browser', 'yourbrowser', 'mac.read', 'user.interact'],
   apps: ['files.read', 'shell', 'mac', 'user.interact'],
-  mixed: ['files', 'shell', 'desktop', 'browser', 'mac', 'user.interact'],
-  unclear: ['files', 'shell', 'desktop', 'browser', 'mac', 'user.interact']
+  mixed: ['files', 'shell', 'desktop', 'browser', 'yourbrowser', 'mac', 'user.interact'],
+  unclear: ['files', 'shell', 'desktop', 'browser', 'yourbrowser', 'mac', 'user.interact']
 }
 
 /** Which tools each Jev-chosen family unlocks. */
-function familyTools(family: Family, tool: ToolDefinition): boolean {
+function familyTools(family: Family, tool: ToolDefinition, setup: PlanSetup): boolean {
   switch (family) {
     case 'files': return tool.capability.startsWith('files') || tool.name === 'app_open'
     case 'desktop': return tool.capability.startsWith('desktop')
-    case 'browser': return tool.capability.startsWith('browser')
+    // Personal browsing gets the user's own browser only, so Kibu does not
+    // open its separate one first; unattended jobs get the separate one.
+    case 'browser': return setup.ownBrowser
+      ? tool.capability.startsWith('yourbrowser') || tool.name === 'browser_read_page'
+      : tool.capability.startsWith('browser') || tool.name === 'browser_read_page' || tool.name === 'open_in_browser'
     case 'system': return MAC_FAMILIES.system!.includes(tool.name) || tool.name === 'app_open'
     default: return MAC_FAMILIES[family]?.includes(tool.name) ?? false
   }
@@ -576,7 +580,7 @@ export class TaskRunner {
         (t) =>
           t.capability === 'user.interact' ||
           MAC_FAMILIES.context!.includes(t.name) ||
-          setup.families.some((f) => familyTools(f, t))
+          setup.families.some((f) => familyTools(f, t, setup))
       )
     }
     const route = (this.task as TaskState & { route?: string }).route ?? 'unclear'
@@ -604,6 +608,18 @@ export class TaskRunner {
       const note = memoryNote(recalled)
       if (note) this.planner.addNote(note)
     }
+    // Jev's call on how a person would go about it, when this is on the web.
+    if (setup.start !== 'none' && (setup.families.includes('browser') || setup.ownBrowser)) {
+      const where = setup.ownBrowser
+        ? "Do this in the user's own browser (your_browser_* tools), where they are signed in, in a new tab."
+        : "Do this in Kibu's separate browser (browser_* tools); it is an unattended job."
+      const start = {
+        feed: 'Start from their personalised home feed or recommendations (for YouTube, https://www.youtube.com/): they want something good, and their feed already knows their taste. Skim it, scroll once or twice if nothing fits, and only search if the feed has nothing suitable.',
+        search: "Start with the site's own search for the specific thing they named.",
+        direct: 'Go straight to the page or site they named.'
+      }[setup.start]
+      this.planner.addNote(`${where} ${start}`)
+    }
     if (this.memoryOn) {
       this.planner.addNote(
         this.deps.memory?.learn
@@ -616,7 +632,8 @@ export class TaskRunner {
     if (this.deps.prefetchContext && (want.selection || want.tab || want.finder || want.clipboard)) {
       this.setStatus('observing', 'Looking at what you have open')
       const seen = await gatherContext(app, want).catch(() => null)
-      const found = seen && (seen.selection || seen.tab || seen.finderSelection?.length || seen.clipboard)
+      const found = seen && (seen.selection || seen.tab || seen.page || seen.finderSelection?.length || seen.clipboard)
+      if (seen?.pageNote) this.log('info', 'context', `open page not readable: ${seen.pageNote}`)
       if (seen && found) {
         this.context().observe({
           kind: 'user',

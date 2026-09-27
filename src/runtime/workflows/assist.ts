@@ -501,12 +501,14 @@ export const noteWorkflow: Workflow = {
       if (!note) {
         // "Save this to notes": this is whatever they had selected, or the page they had open.
         const seen = await runOrFail<ScreenContext>(ctx, 'context_now', { selection: true, tab: true })
-        if (seen.selection?.trim()) {
-          const text = seen.selection.trim()
+        const picked = seen.selection?.trim() || seen.page?.selection?.trim()
+        if (picked) {
+          const text = picked
           const first = text.split('\n')[0]!.trim()
           note = { title: first.length > 60 ? `${first.slice(0, 57).trimEnd()}…` : first, body: text === first ? '' : text }
         } else if (seen.tab) {
           note = { title: seen.tab.title || seen.tab.url, body: seen.tab.url }
+          if (seen.pageNote) ctx.log('info', `saved the link only: ${seen.pageNote}`)
         } else {
           return { success: false, headline: 'Select some text or open a page first, then ask again.', evidence: [] }
         }

@@ -389,6 +389,11 @@ export const screenLook: ToolDefinition = {
   }
 }
 
+/**
+ * What Kibu may do in other apps: look at windows, bring one forward, and
+ * press buttons or fill fields through accessibility actions — none of which
+ * moves the pointer or presses a key.
+ */
 export const desktopTools: ToolDefinition[] = [
   screenLook,
   desktopListApps,
@@ -396,9 +401,13 @@ export const desktopTools: ToolDefinition[] = [
   desktopFocusWindow,
   desktopPressElement,
   desktopSetValue,
-  desktopClick,
-  desktopType,
-  desktopShortcut,
-  desktopScroll,
   desktopCaptureWindow
 ]
+
+/**
+ * Tools that move the person's real mouse or type on their real keyboard.
+ * They are deliberately not registered anywhere: Kibu never takes over the
+ * cursor or the keyboard. They stay defined, and tested, so the guardrails
+ * around them keep working if that decision is ever revisited.
+ */
+export const syntheticInputTools: ToolDefinition[] = [desktopClick, desktopType, desktopShortcut, desktopScroll]

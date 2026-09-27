@@ -47,7 +47,11 @@ export function createPetWindow(deps: PetWindowDeps, saved: { x: number; y: numb
       preload: deps.preload,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      // A transparent, mostly click-through window is easily judged
+      // "covered" by macOS, which then throttles its timers and freezes the
+      // face mid-expression. The pet is tiny; keep its clock running.
+      backgroundThrottling: false
     }
   })
 

@@ -269,7 +269,7 @@ export function Panel(): React.JSX.Element {
         </div>
       </div>
       <main className={`workspace ${view === 'home' && !task ? 'home-workspace' : ''}`} ref={workspace}>
-        {desktopActive && <div className="driving-line"><span className="live" />Controlling your screen<button onClick={() => void window.kibu.stopDesktopSession()}>Stop</button></div>}
+        {desktopActive && <div className="driving-line"><span className="live" />Kibu is acting for you<button onClick={() => void window.kibu.stopDesktopSession()}>Stop</button></div>}
         {aside && <div className="notice" role="status"><span>{aside}</span><button className="icon-button" aria-label="Dismiss message" onClick={() => setAside(null)}><Icon name="close" size={15} /></button></div>}
         {view === 'home' && !task && <section className="idle-space">
           <ul className="rows" aria-label="Actions">{IDEAS.map((idea, i) => <li key={idea.title}><button className="row-button" aria-label={idea.title} style={{ animationDelay: `${i * 40}ms` }} onClick={() => compose(idea.prompt)}><span className="row-icon"><Icon name={idea.icon} size={15} /></span><span className="row-title">{idea.title}</span><span className="row-hint" data-hint={idea.hint} aria-hidden="true" /></button></li>)}</ul>

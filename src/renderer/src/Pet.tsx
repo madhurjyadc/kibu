@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { PetState, TaskState } from '../../shared/protocol.js'
+import type { PetPlay, PetState, TaskState } from '../../shared/protocol.js'
 import { MOOD_FOR, Sprite, type Look, type Mood } from './components/Sprite.js'
 import { plainText } from './components/Markdown.js'
-import { afterFailure, afterSuccess, checkIn, hello, idleRemark, nudge, onStart, reactions, successMood, type Line } from './lib/personality.js'
+import { SURPRISES, afterFailure, afterSuccess, checkIn, hello, idleRemark, nudge, onStart, reactions, successMood, type Line } from './lib/personality.js'
 
 /** Distance in pixels beyond which a mouse-down becomes a drag, not a click. */
 const DRAG_THRESHOLD = 4
@@ -20,6 +20,14 @@ const TERMINAL = ['succeeded', 'failed', 'cancelled']
  */
 interface Flash { mood: Mood; until: number }
 
+/** A little burst of hearts or sparkles, like the website's playground. */
+interface Burst { id: number; kind: 'hearts' | 'sparks'; count: number; color: string }
+
+const reducedMotion = (): boolean => matchMedia('(prefers-reduced-motion: reduce)').matches
+/** Back-and-forth passes over the pet, within this window, count as petting. */
+const PET_RUBS = 4
+const PET_WINDOW_MS = 1400
+
 export function Pet(): React.JSX.Element {
   const [state, setState] = useState<PetState>('idle')
   const [task, setTask] = useState<TaskState | null>(null)
@@ -35,9 +43,17 @@ export function Pet(): React.JSX.Element {
   const [flash, setFlash] = useState<Flash | null>(null)
   const [look, setLook] = useState<Look>({ x: 0, y: 0 })
   const [undoNote, setUndoNote] = useState<string | null>(null)
+  const [bursts, setBursts] = useState<Burst[]>([])
+  const [dancing, setDancing] = useState(false)
+  const motionRef = useRef<HTMLDivElement>(null)
+  const rub = useRef<{ x: number; dir: number; turns: number[] }>({ x: 0, dir: 0, turns: [] })
+  const lastPetted = useRef(0)
+  const surpriseTurn = useRef(0)
+  /** A nap the person asked for lasts until they wake it, not until the cursor wanders by. */
+  const chosenNap = useRef(false)
   /** Celebration and sulking both wear off; the pet goes back to being itself. */
   const [settled, setSettled] = useState(false)
-  const dragRef = useRef<{ startX: number; startY: number; moved: boolean; speed: number } | null>(null)
+  const dragRef = useRef<{ startX: number; startY: number; moved: boolean; speed: number; pressedAt: number } | null>(null)
   const bubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chatTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const later = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -75,10 +91,74 @@ export function Pet(): React.JSX.Element {
     later.current.push(setTimeout(fn, ms))
   }
 
+  /** A little hop, restarted even if one is already playing. */
+  function hop(): void {
+    const el = motionRef.current
+    if (!el || reducedMotion()) return
+    el.classList.remove('is-hop')
+    void el.offsetWidth
+    el.classList.add('is-hop')
+  }
+
+  function burst(kind: Burst['kind'], count: number, color = 'var(--lime)'): void {
+    if (reducedMotion()) return
+    const id = Date.now() + Math.random()
+    setBursts((b) => [...b.slice(-3), { id, kind, count, color }])
+    after(1300, () => setBursts((b) => b.filter((x) => x.id !== id)))
+  }
+
+  function play(action: PetPlay): void {
+    lastPoke.current = Date.now()
+    if (action === 'dance') {
+      chosenNap.current = false
+      setAsleep(false)
+      setDancing(true)
+      say(reactions.danceStart(), 4300)
+      feel('music', 4300)
+      burst('sparks', 16)
+      after(2100, () => burst('sparks', 12, '#e1ff77'))
+      after(4300, () => { setDancing(false); say(reactions.danceEnd(), 2600); hop() })
+    } else if (action === 'nap') {
+      chosenNap.current = true
+      say(reactions.nap(), 2400)
+      after(900, () => setAsleep(true))
+    } else if (action === 'wake') {
+      chosenNap.current = false
+      setAsleep(false)
+      say(reactions.napWake(), 2600)
+    } else {
+      const line = SURPRISES[surpriseTurn.current++ % SURPRISES.length]!
+      say(line, 3200)
+      hop()
+      if (line.mood === 'starstruck') burst('sparks', 12, '#ffe066')
+      if (line.mood === 'kiss') burst('hearts', 7, '#ff6fa8')
+    }
+  }
+
+  /** Rubbing the cursor back and forth over it is petting: hearts, a happy face, a hop. */
+  function noticeRub(clientX: number): void {
+    const r = rub.current
+    const dx = clientX - r.x
+    r.x = clientX
+    if (Math.abs(dx) < 3) return
+    const dir = Math.sign(dx)
+    const now = Date.now()
+    if (r.dir !== 0 && dir !== r.dir) r.turns = [...r.turns.filter((t) => now - t < PET_WINDOW_MS), now]
+    r.dir = dir
+    if (r.turns.length >= PET_RUBS && now - lastPetted.current > 4000) {
+      r.turns = []
+      lastPetted.current = now
+      poke()
+      say(reactions.petted(), 2600)
+      burst('hearts', 9, '#ff6fa8')
+      hop()
+    }
+  }
+
   /** Any sign of the person resets the doze timer, and wakes Kibu with a start. */
   function poke(): void {
     lastPoke.current = Date.now()
-    if (asleepRef.current) {
+    if (asleepRef.current && !chosenNap.current) {
       setAsleep(false)
       feel('surprised', 700)
       after(700, () => say(reactions.woke(), 2600))
@@ -113,7 +193,11 @@ export function Pet(): React.JSX.Element {
           setChat(null)
           if (t.status === 'succeeded') {
             const secs = (t.updatedAt - t.createdAt) / 1000
-            feel(successMood(t.actions.length, secs), 3600)
+            const won = successMood(t.actions.length, secs)
+            feel(won, 3600)
+            if (won === 'celebrate') burst('sparks', 18)
+            else if (won === 'starstruck') burst('sparks', 12, '#ffe066')
+            else if (t.actions.length > 0) burst('sparks', 8)
             after(t.summary?.undoable ? 12500 : 7500, () => { const l = afterSuccess(); if (l) say(l, 6000) })
           } else if (t.status === 'failed') {
             after(3500, () => say(afterFailure(), 7000, false))
@@ -125,6 +209,7 @@ export function Pet(): React.JSX.Element {
       seen.current = { id: t.id, status: t.status, nudged: fresh ? false : (before?.nudged ?? false) }
     })
     const offDesktop = window.kibu.onDesktopSession(setDesktopActive)
+    const offPlay = window.kibu.onPetPlay((action) => play(action))
     // Eyes follow the mouse anywhere on screen, easing off with distance so a
     // far-away cursor gets a glance rather than a stare.
     let lastAt = ''
@@ -143,7 +228,7 @@ export function Pet(): React.JSX.Element {
       if (dist < 90) poke()
     })
     return () => {
-      offDeleted(); offState(); offTask(); offDesktop(); offCursor()
+      offDeleted(); offState(); offTask(); offDesktop(); offCursor(); offPlay()
       clearInterval(settingsTimer)
       if (bubbleTimer.current) clearTimeout(bubbleTimer.current)
       if (chatTimer.current) clearTimeout(chatTimer.current)
@@ -247,6 +332,7 @@ export function Pet(): React.JSX.Element {
   const mood: Mood = (() => {
     if (dropping) return 'excited'
     if (dragging) return 'dizzy'
+    if (dancing) return 'music'
     if (flash && flash.until > Date.now()) return flash.mood
     if (asleep && state === 'idle') return 'sleepy'
     if (state === 'working' && straining) return 'straining'
@@ -256,8 +342,13 @@ export function Pet(): React.JSX.Element {
   })()
 
   function onMouseDown(e: React.MouseEvent): void {
+    // Right-click opens the menu; only the left button picks it up.
+    if (e.button !== 0) return
     if (bubbleRef.current?.contains(e.target as Node)) return
-    dragRef.current = { startX: e.screenX, startY: e.screenY, moved: false, speed: 0 }
+    // When the button went down, in wall-clock time, so main can ask what the
+    // panel was doing *before* this click changed anything.
+    dragRef.current = { startX: e.screenX, startY: e.screenY, moved: false, speed: 0, pressedAt: performance.timeOrigin + e.timeStamp }
+    armDragWatchdog()
     // A fast drag can outrun the window; stay solid until the button is up.
     hold(true)
   }
@@ -294,11 +385,20 @@ export function Pet(): React.JSX.Element {
 
   function onMouseMove(e: React.MouseEvent): void {
     updateHover(e.clientX, e.clientY)
+    // The button came up somewhere this window never heard about — a fast
+    // drag easily leaves the little window behind. Finish the drag now, or
+    // Kibu stays dizzy and keeps swallowing clicks on that patch of screen.
+    if (dragRef.current && (e.buttons & 1) === 0) { endDrag(); return }
+    if (dragRef.current) armDragWatchdog()
     const drag = dragRef.current
-    if (!drag) return
+    if (!drag) {
+      if (hovered) noticeRub(e.clientX)
+      return
+    }
     const dx = e.screenX - drag.startX
     const dy = e.screenY - drag.startY
     if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return
+    if (!drag.moved) say(reactions.picked(), 1800)
     drag.moved = true
     // Only a real shake makes it dizzy; a gentle carry is fine.
     drag.speed = drag.speed * 0.8 + Math.hypot(dx, dy) * 0.2
@@ -308,13 +408,39 @@ export function Pet(): React.JSX.Element {
     void window.kibu.dragPet(dx, dy)
   }
 
-  function onMouseUp(e: React.MouseEvent): void {
+  const dragWatchdog = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** A drag that goes quiet for a while has ended, whether or not the release was seen. */
+  function armDragWatchdog(): void {
+    if (dragWatchdog.current) clearTimeout(dragWatchdog.current)
+    dragWatchdog.current = setTimeout(() => { if (dragRef.current) endDrag() }, 2500)
+  }
+
+  /** Ends a drag whose release happened outside the window: no click, just a landing. */
+  function endDrag(): void {
     const drag = dragRef.current
     dragRef.current = null
-    if (dragging) {
+    if (dragWatchdog.current) clearTimeout(dragWatchdog.current)
+    hold(false)
+    if (drag?.moved) {
+      const shaken = dragging
       setDragging(false)
-      feel('dizzy', 900)
-      if (Math.random() < 0.5) after(900, () => say(reactions.carried(), 2600))
+      say(reactions.landed(shaken), 2400)
+      hop()
+    } else {
+      setDragging(false)
+    }
+  }
+
+  function onMouseUp(e: React.MouseEvent): void {
+    if (dragWatchdog.current) clearTimeout(dragWatchdog.current)
+    const drag = dragRef.current
+    dragRef.current = null
+    if (drag?.moved) {
+      const shaken = dragging
+      setDragging(false)
+      say(reactions.landed(shaken), 2400)
+      hop()
     }
     hold(false)
     updateHover(e.clientX, e.clientY)
@@ -324,10 +450,12 @@ export function Pet(): React.JSX.Element {
     // request to open the panel.
     const now = Date.now()
     clicks.current = [...clicks.current.filter((t) => now - t < 1500), now]
-    if (clicks.current.length >= 6) { clicks.current = []; say(reactions.tickled(), 2600); return }
-    if (clicks.current.length === 3) { say(reactions.loved(), 2200); return }
+    if (clicks.current.length >= 6) { clicks.current = []; say(reactions.tickled(), 2600); burst('sparks', 10); hop(); return }
+    if (clicks.current.length === 3) { say(reactions.petted(), 2200); burst('hearts', 9, '#ff6fa8'); hop(); return }
+    // A click wakes a nap it asked for, without also opening the panel.
+    if (asleepRef.current) { chosenNap.current = false; setAsleep(false); say(reactions.napWake(), 2400); return }
     if (clicks.current.length > 1) return
-    void window.kibu.petClicked()
+    void window.kibu.petClicked(drag.pressedAt)
   }
 
   function onDrop(e: React.DragEvent): void {
@@ -336,7 +464,8 @@ export function Pet(): React.JSX.Element {
     hold(false)
     const paths = Array.from(e.dataTransfer.files).map((f) => window.kibu.getPathForFile(f)).filter(Boolean)
     if (paths.length === 0) return
-    say(reactions.fed(paths.length), 2600)
+    say(reactions.fed(paths.length), 1200)
+    after(900, () => { say(reactions.ate(paths.length), 2600); burst('sparks', paths.length >= 3 ? 16 : 10); hop() })
     void window.kibu.reportDroppedPaths(paths)
   }
 
@@ -370,11 +499,14 @@ export function Pet(): React.JSX.Element {
       className={`pet-root ${dropping ? 'dropping' : ''} ${desktopActive ? 'driving' : ''}`}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
-      onMouseLeave={() => {
+      onMouseLeave={(e) => {
         setHovered(false)
         if (!dragRef.current) hold(false)
+        // Left the window with the button already up: that drag is over.
+        else if ((e.buttons & 1) === 0) endDrag()
       }}
       onMouseUp={onMouseUp}
+      onContextMenu={(e) => { e.preventDefault(); hold(false); void window.kibu.showPetMenu(asleep) }}
       onDragOver={(e) => { e.preventDefault(); setDropping(true) }}
       onDragEnter={() => hold(true)}
       onDragLeave={() => { setDropping(false); hold(false) }}
@@ -396,7 +528,23 @@ export function Pet(): React.JSX.Element {
         </div>
       )}
       <div className="pet-hit" ref={hitRef}>
-        <Sprite state={state} mood={mood} look={look} size={92} />
+        <div className={`pet-motion ${dancing ? 'is-dancing' : ''}`} ref={motionRef} onAnimationEnd={(e) => e.animationName === 'kb-pet-hop' && motionRef.current?.classList.remove('is-hop')}>
+          <Sprite state={state} mood={mood} look={look} size={92} />
+        </div>
+      </div>
+      <div className="pet-bursts" aria-hidden="true">
+        {bursts.map((b) =>
+          Array.from({ length: b.count }, (_, i) => {
+            const angle = (Math.PI * 2 * i) / b.count - Math.PI / 2
+            const dist = 34 + ((i * 37) % 30)
+            return (
+              <span key={`${b.id}-${i}`} className={`pet-particle is-${b.kind}`}
+                style={{ ['--dx' as string]: `${Math.cos(angle) * dist}px`, ['--dy' as string]: `${Math.sin(angle) * dist - 14}px`, ['--spin' as string]: `${(i * 47) % 160}deg`, color: b.color, background: b.kind === 'sparks' ? b.color : undefined, animationDelay: `${(i % 3) * 30}ms` }}>
+                {b.kind === 'hearts' ? '♥' : ''}
+              </span>
+            )
+          })
+        )}
       </div>
       {dropping && <div className="drop-hint">drop it</div>}
     </div>

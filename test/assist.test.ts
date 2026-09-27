@@ -9,7 +9,7 @@ import { understand, routeFor } from '../src/runtime/model/understand.js'
 import { Jev, localPlanSetup } from '../src/runtime/model/jev.js'
 import { ClaudeCodePlanner } from '../src/runtime/model/claude-code-planner.js'
 import { SCRIPTS, setMacBridge, osascriptBridge, reverseMacChange, explainScriptError, type MacBridge } from '../src/os/macos/scripting.js'
-import { macTools, noteHtml } from '../src/runtime/tools/mac.js'
+import { macTools, noteHtml, gatherContext, openInBrowser } from '../src/runtime/tools/mac.js'
 import { TaskRunner, type RunnerDeps } from '../src/runtime/loop/task-runner.js'
 import type { PlannerLike, PlannerProposal } from '../src/runtime/model/planner.js'
 import { ToolRegistry } from '../src/runtime/tools/registry.js'
@@ -381,7 +381,7 @@ describe('the planner path', () => {
     assert.ok(menu.includes('notes_create'))
     assert.ok(menu.includes('context_now'))
     assert.ok(menu.includes('ask_user'))
-    assert.ok(!menu.includes('desktop_click'), 'no mouse-clicking for a note')
+    assert.ok(!menu.includes('desktop_inspect_window'), 'no window-driving for a note')
     assert.ok(!menu.includes('files_move'))
     assert.deepEqual(planner.tiers, ['quick'])
     assert.ok(planner.notes.some((n) => /The user was in Safari/.test(n)))
@@ -391,8 +391,8 @@ describe('the planner path', () => {
     const bad = { name: 'notes_read', input: { id: 'missing' } }
     const planner = new ScriptedPlanner([[bad], [bad], [bad], [bad], [], []])
     await run('read my note about the trip', { workflows: false, planner })
-    assert.ok(!planner.menus[0]!.includes('desktop_click'))
-    assert.ok(planner.menus.at(-1)!.includes('desktop_click'), 'the menu grew')
+    assert.ok(!planner.menus[0]!.includes('desktop_inspect_window'))
+    assert.ok(planner.menus.at(-1)!.includes('desktop_inspect_window'), 'the menu grew')
     assert.deepEqual(planner.tiers, ['quick', 'full'])
   })
 })
@@ -467,6 +467,59 @@ describe('the persistent Claude Code session', () => {
     })
     planner.seed(task, [])
     await assert.rejects(() => planner.propose(TOOLS), /not logged in/)
+  })
+})
+
+describe("reading the user's own browser", () => {
+  const page = { browser: 'Google Chrome', title: 'Launch plan', url: 'https://docs.example.com/launch', selection: 'ship on friday', text: 'The launch plan. Ship on Friday.' }
+  function bridge(readTab: () => unknown): MacBridge & { scripts: string[] } {
+    const name = (body: string): string => Object.entries(SCRIPTS).find(([, s]) => s === body)?.[0] ?? 'unknown'
+    const scripts: string[] = []
+    return {
+      scripts,
+      async jxa<T>(body: string, input: any): Promise<T> {
+        const s = name(body); scripts.push(s)
+        if (s === 'readTab') { assert.equal(input.prefer, 'Google Chrome'); return readTab() as T }
+        if (s === 'browserTabs') return [{ browser: 'Google Chrome', title: 'Launch plan', url: page.url, active: true }] as T
+        throw new Error(`no fake for ${s}`)
+      },
+      async exec(program: string, args: string[]) { scripts.push(`${program} ${args.join(' ')}`); return { stdout: '', stderr: '', code: 0 } }
+    }
+  }
+  afterEach(() => setMacBridge(osascriptBridge))
+
+  test('the open page comes with its text, from the browser the user was in', async () => {
+    setMacBridge(bridge(() => page))
+    const seen = await gatherContext('Google Chrome', { tab: true })
+    assert.equal(seen.tab?.url, page.url)
+    assert.equal(seen.page?.text, page.text)
+    assert.equal(seen.page?.selection, 'ship on friday')
+  })
+
+  test('if the browser setting is off, it still knows the tab, and says why there is no text', async () => {
+    setMacBridge(bridge(() => { throw new Error(explainScriptError('execution error: Executing JavaScript through AppleScript is turned off. (-1)')) }))
+    const seen = await gatherContext('Google Chrome', { tab: true })
+    assert.equal(seen.tab?.title, 'Launch plan')
+    assert.equal(seen.page, undefined)
+    assert.match(seen.pageNote!, /Allow JavaScript from Apple Events/)
+    assert.match(seen.pageNote!, /never clicks or types/)
+  })
+
+  test('opening a page uses the default browser, and only for web addresses', async () => {
+    const b = bridge(() => page)
+    setMacBridge(b)
+    const ctx = { progress: () => {} } as never
+    await openInBrowser.execute({ url: 'https://example.com/a' }, ctx)
+    assert.ok(b.scripts.includes('open https://example.com/a'))
+    await assert.rejects(() => openInBrowser.execute({ url: 'file:///etc/passwd' }, ctx), /Only HTTP and HTTPS/)
+  })
+})
+
+describe('Kibu never drives the mouse or keyboard', () => {
+  test('no tool that moves the pointer or types is registered in the app', async () => {
+    const { desktopTools } = await import('../src/runtime/tools/desktop.js')
+    const names = desktopTools.map((t) => t.name)
+    for (const banned of ['desktop_click', 'desktop_type', 'desktop_shortcut', 'desktop_scroll']) assert.ok(!names.includes(banned), banned)
   })
 })
 

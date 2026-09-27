@@ -31,6 +31,7 @@ import type {
   BenchRow,
   FrontWindow,
   LogEntry,
+  PetPlay,
   PreviousTurn,
   RuntimeToHost,
   Settings,
@@ -319,11 +320,29 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
  * Windows and shortcut
  * ------------------------------------------------------------------ */
 
-function togglePanel(focusInput = true): void {
+/**
+ * When the panel gained and lost focus. A click on the pet activates Kibu,
+ * and macOS hands focus back to the panel during that same click — so asking
+ * "is the panel focused?" when the click arrives always says yes. Asking what
+ * it was just before the button went down gives the real answer.
+ */
+const panelFocusLog: { at: number; focused: boolean }[] = []
+
+function notePanelFocus(focused: boolean): void {
+  panelFocusLog.push({ at: Date.now(), focused })
+  if (panelFocusLog.length > 40) panelFocusLog.shift()
+}
+
+function panelFocusedAt(time: number): boolean {
+  for (let i = panelFocusLog.length - 1; i >= 0; i--) if (panelFocusLog[i]!.at <= time) return panelFocusLog[i]!.focused
+  return false
+}
+
+function togglePanel(focusInput = true, pressedAt?: number): void {
   if (!panelWindow || panelWindow.isDestroyed()) return
   // Whatever you were in before this click is "the previous app", whether the
   // panel was hidden or just behind it.
-  if (!panelWindow.isVisible() || !panelWindow.isFocused()) void captureFrontWindow()
+  if (!panelWindow.isVisible() || !(pressedAt ? panelFocusedAt(pressedAt - 20) : panelWindow.isFocused())) void captureFrontWindow()
   if (panelWindow.isVisible()) {
     // Docked, the panel is a handle on the edge of the screen: the shortcut
     // should open it out, not put it away.
@@ -336,7 +355,11 @@ function togglePanel(focusInput = true): void {
     // click on the pet then means "show me", and hiding the panel instead
     // looked like the click had done nothing. It only puts the panel away
     // when you are actually using it.
-    if (!panelWindow.isFocused()) {
+    //
+    // For a pet click, "using it" means focused just before the button went
+    // down; see panelFocusLog.
+    const inUse = pressedAt ? panelFocusedAt(pressedAt - 20) : panelWindow.isFocused()
+    if (!inUse) {
       showPanel()
       if (focusInput) panelWindow.webContents.send(IPC.onFocusInput)
       return
@@ -662,7 +685,9 @@ function registerIpc(): void {
     broadcastPanelState()
   })
   ipcMain.handle(IPC.panelStateGet, () => ({ docked: isPanelDocked(), pinned: isPanelPinned() }))
-  ipcMain.handle(IPC.petClicked, () => togglePanel(true))
+  ipcMain.handle(IPC.petClicked, (_e, pressedAt: unknown) => {
+    const at = typeof pressedAt === 'number' && Number.isFinite(pressedAt) && Math.abs(Date.now() - pressedAt) < 5000 ? pressedAt : undefined
+    togglePanel(true, at) })
   // A bubble suggestion: open the panel with the words typed in, never sent.
   ipcMain.handle(IPC.petCompose, (_e, text: unknown) => {
     if (typeof text !== 'string' || !panelWindow || panelWindow.isDestroyed()) return
@@ -672,6 +697,18 @@ function registerIpc(): void {
     panelWindow.webContents.send(IPC.onFocusInput)
   })
   ipcMain.handle(IPC.petInteractive, (_e, v: unknown) => setPetInteractive(petWindow, !!v))
+  // The pet's own menu: open Kibu, or play with it the way the website does.
+  ipcMain.handle(IPC.petMenu, (_e, napping: unknown) => {
+    if (!petWindow || petWindow.isDestroyed()) return
+    const play = (action: PetPlay) => () => petWindow?.webContents.send(IPC.onPetPlay, action)
+    Menu.buildFromTemplate([
+      { label: 'Open Kibu', click: () => togglePanelShow() },
+      { type: 'separator' },
+      { label: 'Dance break', click: play('dance') },
+      napping ? { label: 'Wake up', click: play('wake') } : { label: 'Little nap', click: play('nap') },
+      { label: 'Surprise me', click: play('surprise') }
+    ]).popup({ window: petWindow })
+  })
   ipcMain.handle(IPC.memoriesList, () => store.listMemories())
   ipcMain.handle(IPC.memoryDelete, (_e, id: unknown) => {
     if (typeof id === 'string') store.deleteMemories([id])
@@ -818,6 +855,9 @@ if (!singleInstance) {
       { preload: p.preload, rendererUrl: RENDERER_URL, rendererFile: p.rendererFile },
       { x: settings.panelX, y: settings.panelY, pinned: settings.panelPinned }
     )
+    panelWindow.on('focus', () => notePanelFocus(true))
+    panelWindow.on('blur', () => notePanelFocus(false))
+    panelWindow.on('hide', () => notePanelFocus(false))
     panelWindow.on('moved', () => {
       // Only a panel the user dragged is worth remembering; the docked handle
       // and the open/close animations place themselves.

@@ -316,6 +316,13 @@ export class Jev {
           tab: family('Does the request refer to the web page or site the user has open?'),
           finder: family('Does it refer to files the user has selected in Finder?'),
           clipboard: family('Does the user mention something they copied, or the clipboard?'),
+          ownBrowser: family("Is this personal browsing best done in the user's own signed-in browser — watching, listening, their feed, their accounts, their inbox — rather than an unattended job like downloading or filling in a form?"),
+          start: choice('Where would a person start this on the web?', {
+            feed: 'Their personalised home feed or recommendations, because they want something good rather than one specific thing.',
+            search: 'A search, because they named a specific thing, topic or question.',
+            direct: 'A specific page or site they named.',
+            none: 'This is not a web task.'
+          }),
           effort: choice('How much work is this?', {
             quick: 'One small job in one place: add an event, answer from one page, change a setting.',
             involved: 'Several steps across apps or sites, working something out, or writing something substantial.'
@@ -338,6 +345,8 @@ export class Jev {
           clipboard: local.context.clipboard && yes(answers.clipboard as { noul?: number }, true)
         },
         quick: (answers.effort as { choice?: string } | undefined)?.choice === 'quick',
+        ownBrowser: yes(answers.ownBrowser as { noul?: number }, local.ownBrowser),
+        start: (((answers.start as { choice?: string } | undefined)?.choice) as PlanSetup['start'] | undefined) ?? local.start,
         source: 'jev'
       }
       this.record('plan_setup', true, Date.now() - started, jevCost(usage.input_tokens), usage.input_tokens, describeSetup(setup), 1)
@@ -561,6 +570,10 @@ export interface PlanSetup {
   context: { selection: boolean; tab: boolean; finder: boolean; clipboard: boolean }
   /** The job is small enough for the quick model. */
   quick: boolean
+  /** Personal browsing happens in the user's own browser, where they are signed in. */
+  ownBrowser: boolean
+  /** Where a person would start on the web: their feed, a search, a named page. */
+  start: 'feed' | 'search' | 'direct' | 'none'
   source: 'local' | 'jev'
 }
 
@@ -598,13 +611,24 @@ export function localPlanSetup(request: string, route: string, hasDroppedPaths: 
       clipboard: /\b(clipboard|copied|paste)\b/i.test(request)
     },
     quick: request.trim().split(/\s+/).length <= 14 && !/\b(and then|then|after that|every|each|all of)\b/i.test(request),
+    ownBrowser:
+      /\b(watch|play|listen|my (?:feed|home ?feed|inbox|account|playlist|subscriptions|timeline|profile)|youtube|netflix|spotify|twitter|x\.com|instagram|reddit|gmail|linkedin|in (?:my )?(?:browser|chrome|safari))\b/i.test(request) &&
+      !/\b(download|fill (?:in|out)|sign ?up|scrape)\b/i.test(request),
+    start: !families.includes('browser') && !/\b(youtube|netflix|spotify|website|site|web|online|watch|video)\b/i.test(request)
+      ? 'none'
+      : /\bhttps?:\/\/|\b[a-z0-9-]+\.(?:com|org|io|net|dev|ai|in|co)\b/i.test(request) && !/\b(something|anything|good|recommend)\b/i.test(request)
+        ? 'direct'
+        : /\b(something|anything|a good|good|recommend|random|to watch|to listen|while)\b/i.test(request)
+          ? 'feed'
+          : 'search',
     source: 'local'
   }
 }
 
 function describeSetup(s: PlanSetup): string {
   const ctx = Object.entries(s.context).filter(([, v]) => v).map(([k]) => k)
-  return `${s.families.join('+') || 'everything'}${ctx.length ? `, fetch ${ctx.join('+')}` : ''}, ${s.quick ? 'quick' : 'full'} model`
+  const web = s.start !== 'none' ? `, web: ${s.ownBrowser ? 'your browser' : "Kibu's browser"} from ${s.start}` : ''
+  return `${s.families.join('+') || 'everything'}${ctx.length ? `, fetch ${ctx.join('+')}` : ''}${web}, ${s.quick ? 'quick' : 'full'} model`
 }
 
 /** Summary line for the task history, so Jev's cost and effect stay visible. */

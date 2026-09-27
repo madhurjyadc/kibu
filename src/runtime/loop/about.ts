@@ -65,7 +65,7 @@ export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: 
       label: 'Your Mac',
       value: canSeeApps
         ? 'Read what is in a window and press its buttons or fill its fields through accessibility, rather ' +
-          'than clicking at coordinates and hoping.'
+          'than clicking at coordinates and hoping. I never move your mouse or type for you.'
         : 'Blocked right now. macOS has not granted me Accessibility, so I cannot see any window or press ' +
           'anything. Open /tune and let me in, and this turns on.'
     },

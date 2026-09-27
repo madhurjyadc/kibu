@@ -148,8 +148,10 @@ The model proposes actions. Local code decides whether they happen:
    only ever a draft; nothing Kibu does reaches another person on its own.
 3. **Semantic control** — macOS accessibility actions and browser DOM
    references, which are far more reliable than pixels.
-4. **Synthetic input** — clicks and keystrokes, only when nothing above is
-   available, and each one records why it was needed.
+**Never: your mouse or keyboard.** Kibu does not move the pointer or type
+keystrokes, ever. The tools that could (`syntheticInputTools` in
+`src/runtime/tools/desktop.ts`) are defined but not registered. If something
+can only be done by clicking, Kibu tells you what to click.
 
 Element references are tied to the observation that produced them. Acting on a
 reference from a stale snapshot fails with a "re-observe first" error instead

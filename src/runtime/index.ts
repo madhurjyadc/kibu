@@ -15,6 +15,7 @@ import { desktopTools } from './tools/desktop.js'
 import { browserTools, ManagedBrowser } from './tools/browser.js'
 import { macTools } from './tools/mac.js'
 import { rememberTool } from './tools/memory.js'
+import { yourBrowserTools } from './tools/your-browser.js'
 import { TaskRunner } from './loop/task-runner.js'
 import { ClaudeCodePlanner } from './model/claude-code-planner.js'
 import { runBench } from './bench.js'
@@ -36,7 +37,7 @@ const browser = new ManagedBrowser(profileDir, downloadDir, (level, message) =>
 )
 
 const registry = new ToolRegistry()
-registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools, rememberTool])
+registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools, ...yourBrowserTools, rememberTool])
 
 let runner: TaskRunner | null = null
 

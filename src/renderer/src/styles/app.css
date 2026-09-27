@@ -269,8 +269,11 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 /* ---------------------------------------------------------------- pet window */
 .pet-root { width: 260px; height: 190px; position: relative; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; user-select: none; font-family: var(--sans); }
 .pet-hit { display: flex; cursor: grab; } .pet-hit:active { cursor: grabbing; }
+/* The bubble sits just above Kibu's head (92 px wide, 86 px tall, 4 px off the
+   floor) rather than at the top of the window, so it reads as his and grows
+   upwards when the text is long. */
 .bubble {
-  position: absolute; top: 4px; left: 50%; transform: translateX(-50%); max-width: 244px; width: max-content;
+  position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); max-width: 244px; width: max-content;
   display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px;
   background: #101012f0; color: var(--fg); border: 1px solid #ffffff1f; border-radius: 12px;
   font-size: 12px; line-height: 1.35; box-shadow: 0 12px 28px -12px #000000cc, inset 0 1px 0 #ffffff12;
@@ -351,3 +354,16 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .memories { list-style: none; padding: 0; margin: 6px 0 0; } .memories li { display: flex; align-items: flex-start; gap: 12px; padding: 7px 0; font-size: 13px; line-height: 1.45; border-top: 1px solid var(--hair); } .memories li:first-child { border-top: 0; } .memories li>span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .memories button, .memory-actions button { flex: none; color: var(--dim); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; padding-top: 2px; } .memories button:hover, .memory-actions button:hover { color: var(--lime); } .memory-actions button.bad { color: var(--bad); }
 .memory-actions { display: flex; align-items: center; gap: 14px; margin-top: 10px; font-size: 12px; }
+
+/* ---------------------------------------------------------------- pet play, as on the website */
+.pet-motion { transform-origin: 50% 100%; }
+.pet-motion.is-hop { animation: kb-pet-hop 620ms cubic-bezier(.2,.8,.2,1); }
+.pet-motion.is-dancing { animation: kb-pet-dance 850ms ease-in-out infinite; }
+@keyframes kb-pet-hop { 0% { transform: translateY(0) scale(1); } 42% { transform: translateY(-9px) scale(.97, 1.04); } 82% { transform: translateY(0) scale(1.08, .92); } 100% { transform: none; } }
+@keyframes kb-pet-dance { 0%, 50%, 100% { transform: translateY(0) rotate(-9deg); } 25% { transform: translateY(-8px) rotate(9deg); } 75% { transform: translateY(-6px) rotate(9deg); } }
+.pet-bursts { position: absolute; left: 50%; bottom: 46px; width: 0; height: 0; pointer-events: none; }
+.pet-particle { position: absolute; left: 0; top: 0; z-index: 2; animation: kb-burst 1100ms cubic-bezier(.2,.8,.2,1) both; }
+.pet-particle.is-sparks { width: 6px; height: 6px; border-radius: 1.5px; margin: -3px 0 0 -3px; box-shadow: 0 0 8px currentColor; }
+.pet-particle.is-hearts { font: 17px/1 var(--sans); margin: -9px 0 0 -7px; text-shadow: 0 0 8px #ff6fa866; }
+@keyframes kb-burst { 0% { transform: translate(0, 0) scale(.6); opacity: 0; } 12% { opacity: 1; } 65% { transform: translate(calc(var(--dx) * .85), calc(var(--dy) * .85)) rotate(calc(var(--spin) * .6)) scale(1); opacity: 1; } 100% { transform: translate(var(--dx), var(--dy)) rotate(var(--spin)) scale(.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pet-motion.is-hop, .pet-motion.is-dancing, .pet-particle { animation: none; } .pet-particle { display: none; } }

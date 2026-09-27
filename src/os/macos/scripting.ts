@@ -29,6 +29,11 @@ export function explainScriptError(stderr: string, app?: string): string {
   if (/-1719|assistive access|not allowed assistive/i.test(stderr)) {
     return 'Kibu needs Accessibility permission for that. Allow it in System Settings → Privacy & Security → Accessibility.'
   }
+  if (/JavaScript through AppleScript is turned off|Allow JavaScript from Apple Events|JavaScript from Apple Events/i.test(stderr)) {
+    return /safari/i.test(stderr)
+      ? 'Safari needs one setting first: Safari → Settings → Advanced → "Show features for web developers", then Develop → "Allow JavaScript from Apple Events".'
+      : 'Your browser needs one setting first: in its menu bar, View → Developer → "Allow JavaScript from Apple Events". Kibu only reads the page; it never clicks or types in it.'
+  }
   if (/-600|isn.t running|application isn.t running/i.test(stderr)) return `${who} isn't running.`
   if (/can.t get|doesn.t understand|-1728/i.test(stderr)) return `${who} couldn't find what was asked for.`
   const line = stderr.replace(/^.*execution error:\s*/s, '').replace(/\s*\(-?\d+\)\s*$/, '').trim()
@@ -242,6 +247,77 @@ export const SCRIPTS = {
       } catch (e) {}
     }
     return out.slice(0, 200)`,
+
+  // The page open in the person's own browser: title, address, selection and
+  // main text. Read-only, and the script run in the page is fixed text below,
+  // never built from a request.
+  readTab: `
+    const se = Application('System Events')
+    const running = se.processes.whose({ backgroundOnly: false }).name()
+    const js = "(function(){var m=document.querySelector('article')||document.querySelector('main,[role=main]')||document.body;" +
+      "return JSON.stringify({title:document.title,url:location.href,selection:String(window.getSelection()||'').slice(0,8000)," +
+      "text:((m&&m.innerText)||'').replace(/\\n{3,}/g,'\\n\\n').slice(0,40000)})})()"
+    const browsers = ['Google Chrome', 'Arc', 'Brave Browser', 'Microsoft Edge', 'Chromium', 'Safari']
+    const order = input.prefer && browsers.includes(input.prefer) ? [input.prefer, ...browsers.filter((b) => b !== input.prefer)] : browsers
+    for (const name of order) {
+      if (!running.includes(name)) continue
+      let raw
+      if (name === 'Safari') {
+        const s = Application('Safari')
+        if (!s.documents.length) continue
+        raw = s.doJavaScript(js, { in: s.documents[0] })
+      } else {
+        const app = Application(name)
+        if (!app.windows.length) continue
+        raw = app.windows[0].activeTab().execute({ javascript: js })
+      }
+      const page = JSON.parse(raw)
+      return { browser: name, title: page.title, url: page.url, selection: page.selection, text: page.text }
+    }
+    return null`,
+
+  // Runs one of Kibu's fixed page programs in the active tab of the person's
+  // browser. `program` is always one of the constants in your-browser.ts and
+  // `arg` is JSON-encoded data — neither is ever text from a model or a page.
+  pageRun: `
+    const se = Application('System Events')
+    const running = se.processes.whose({ backgroundOnly: false }).name()
+    const browsers = ['Google Chrome', 'Brave Browser', 'Microsoft Edge', 'Chromium', 'Arc', 'Safari']
+    const name = input.browser && running.includes(input.browser) ? input.browser : browsers.find((b) => running.includes(b))
+    if (!name) throw new Error('No supported browser is running.')
+    const code = '(' + input.program + ')(' + input.arg + ')'
+    let raw
+    if (name === 'Safari') {
+      const s = Application('Safari')
+      raw = s.doJavaScript(code, { in: s.windows[0].currentTab() })
+    } else {
+      raw = Application(name).windows[0].activeTab().execute({ javascript: code })
+    }
+    return { browser: name, result: raw === undefined || raw === null || raw === '' ? null : JSON.parse(raw) }`,
+
+  // A new tab in the person's browser, brought to the front. Their current
+  // tab is left exactly as it was.
+  newTab: `
+    const name = input.browser
+    const app = Application(name)
+    app.activate()
+    if (name === 'Safari') {
+      if (!app.windows.length) app.Document().make()
+      const w = app.windows[0]
+      const t = app.Tab({ url: input.url })
+      w.tabs.push(t)
+      w.currentTab = t
+      return { browser: name }
+    }
+    if (!app.windows.length) {
+      app.Window().make()
+      app.windows[0].activeTab().url = input.url
+      return { browser: name }
+    }
+    const w = app.windows[0]
+    w.tabs.push(app.Tab({ url: input.url }))
+    w.activeTabIndex = w.tabs.length
+    return { browser: name }`,
 
   // Selected text in the app the person was using. Needs Accessibility.
   selection: `

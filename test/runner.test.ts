@@ -10,7 +10,7 @@ import type { PlannerLike, PlannerProposal } from '../src/runtime/model/planner.
 import { ToolRegistry } from '../src/runtime/tools/registry.js'
 import { fileTools } from '../src/runtime/tools/files.js'
 import { userTools } from '../src/runtime/tools/user.js'
-import { desktopTools } from '../src/runtime/tools/desktop.js'
+import { desktopTools, syntheticInputTools } from '../src/runtime/tools/desktop.js'
 import { defaultLimits, emptyAuthorization, type TaskState } from '../src/shared/types.js'
 import { DEFAULT_MODEL_CONFIG } from '../src/shared/protocol.js'
 
@@ -45,7 +45,8 @@ class ScriptedPlanner implements PlannerLike {
 
 let root: string
 const registry = new ToolRegistry()
-registry.registerAll([...fileTools, ...userTools, ...desktopTools])
+// The synthetic-input tools are not part of the app, but their guardrails are still tested.
+registry.registerAll([...fileTools, ...userTools, ...desktopTools, ...syntheticInputTools])
 
 interface Harness {
   runner: TaskRunner

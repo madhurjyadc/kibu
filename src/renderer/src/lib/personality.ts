@@ -76,15 +76,37 @@ export function afterFailure(): Line {
 }
 
 export const reactions = {
-  tickled: (): Line => ({ text: pick(['Hey, that tickles!', 'Hehe, stop it.']), mood: 'laugh' }),
-  loved: (): Line => ({ text: pick(['Aw.', 'You’re sweet.']), mood: 'kiss' }),
+  tickled: (): Line => ({ text: pick(['Hey, that tickles!', 'Hehe, stop it.', 'You had to be there.']), mood: 'laugh' }),
+  loved: (): Line => ({ text: pick(['Aw.', 'You’re sweet.', 'Oh. That’s nice.']), mood: 'kiss' }),
+  /** Rubbing the cursor back and forth over it: being petted. */
+  petted: (): Line => ({ text: pick(['Oh. That’s nice.', 'You get me.', 'My favourite human.']), mood: 'love' }),
+  picked: (): Line => ({ text: pick(['Wheee.', 'Whoa, where are we going?']), mood: 'surprised' }),
+  landed: (shaken: boolean): Line =>
+    shaken ? { text: pick(['Nice landing. Mostly.', 'The room is spinning.']), mood: 'dizzy' } : { text: pick(['Nice spot.', 'Ooh, new view.']), mood: 'happy' },
   carried: (): Line => ({ text: pick(['Whoa. Warn me next time.', 'I’m getting dizzy…']), mood: 'pout' }),
   woke: (): Line => ({ text: pick(['Oh! Hi.', 'I’m up, I’m up.']), mood: 'wave' }),
   yawn: (): Line => ({ text: 'Getting a little sleepy…', mood: 'yawn' }),
   undone: (n: number): Line => ({ text: n ? `My bad. Put ${n} back.` : 'Nothing to put back.', mood: 'oops' }),
   hovered: (): Line => ({ text: pick(['Hi.', 'Oh, hello.']), mood: 'shy' }),
-  fed: (n: number): Line => ({ text: n === 1 ? 'Ooh, what’s this?' : `Ooh, ${n} things. What are we doing?`, mood: 'excited' })
+  fed: (n: number): Line => ({ text: n === 1 ? 'Ooh, what’s this?' : `Ooh, ${n} things. What are we doing?`, mood: 'excited' }),
+  /** Just after a drop: crunch. */
+  ate: (n: number): Line => (n >= 3 ? { text: 'Delicious. Five stars.', mood: 'celebrate' } : { text: pick(['Nom. Zero crumbs.', 'A little byte.']), mood: 'happy' }),
+  danceStart: (): Line => ({ text: 'Tiny desk disco.', mood: 'music' }),
+  danceEnd: (): Line => ({ text: 'Still got it.', mood: 'cool' }),
+  nap: (): Line => ({ text: 'Recharging. Zzz.', mood: 'sleepy' }),
+  napWake: (): Line => ({ text: 'Five more minutes?', mood: 'yawn' })
 }
+
+/** "Surprise me": the website's party tricks, in turn. */
+export const SURPRISES: readonly Line[] = [
+  { text: 'Too cool for busywork.', mood: 'cool' },
+  { text: 'Ah… ah… achoo.', mood: 'sneeze' },
+  { text: 'You’re kind of a big deal.', mood: 'starstruck' },
+  { text: 'A little thank-you.', mood: 'kiss' },
+  { text: 'You had to be there.', mood: 'laugh' },
+  { text: 'Hi again, favourite human.', mood: 'wave' },
+  { text: 'Between you and me…', mood: 'wink' }
+]
 
 /**
  * The occasional unprompted remark while idle. It depends on the hour and on

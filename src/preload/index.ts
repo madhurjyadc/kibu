@@ -6,6 +6,7 @@ import type {
   LogEntry,
   Memory,
   PanelState,
+  PetPlay,
   PetState,
   Settings,
   StartTaskRequest,
@@ -60,12 +61,14 @@ const bridge: KibuBridge & { getPathForFile(file: File): string } = {
   closePanel: () => ipcRenderer.invoke(IPC.panelClose),
   centerPanel: () => ipcRenderer.invoke(IPC.panelCenter),
   petCompose: (text: string) => ipcRenderer.invoke(IPC.petCompose, text),
+  showPetMenu: (napping: boolean) => ipcRenderer.invoke(IPC.petMenu, napping),
+  onPetPlay: (cb) => subscribe<PetPlay>(IPC.onPetPlay, cb),
   onSeed: (cb) => subscribe<string>(IPC.onSeed, cb),
   dragPanel: (phase: 'start' | 'move' | 'end') => ipcRenderer.invoke(IPC.panelDrag, phase),
   minimizePanel: () => ipcRenderer.invoke(IPC.panelMinimize),
   pinPanel: (pinned: boolean) => ipcRenderer.invoke(IPC.panelPin, pinned),
   getPanelState: () => ipcRenderer.invoke(IPC.panelStateGet),
-  petClicked: () => ipcRenderer.invoke(IPC.petClicked),
+  petClicked: (pressedAt?: number) => ipcRenderer.invoke(IPC.petClicked, pressedAt),
   /** Holds the pet solid to the mouse (during a drag or a file drop), or releases it. */
   setPetInteractive: (v: boolean) => ipcRenderer.invoke(IPC.petInteractive, v),
   /** Where the creature and its bubble are, so main can decide what catches the mouse. */

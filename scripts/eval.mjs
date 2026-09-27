@@ -24,6 +24,7 @@ import { desktopTools } from '../dist-test/src/runtime/tools/desktop.js'
 import { browserTools, ManagedBrowser } from '../dist-test/src/runtime/tools/browser.js'
 import { macTools } from '../dist-test/src/runtime/tools/mac.js'
 import { rememberTool } from '../dist-test/src/runtime/tools/memory.js'
+import { yourBrowserTools } from '../dist-test/src/runtime/tools/your-browser.js'
 import { ClaudeCodePlanner } from '../dist-test/src/runtime/model/claude-code-planner.js'
 import { reverseMacChange } from '../dist-test/src/os/macos/scripting.js'
 import { createOsAdapter } from '../dist-test/src/os/index.js'
@@ -63,7 +64,7 @@ const jevKey = process.env.TYPESAFE_API_KEY ?? null
 let memories = []
 
 const registry = new ToolRegistry()
-registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools, rememberTool])
+registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools, ...yourBrowserTools, rememberTool])
 const os = createOsAdapter(join(process.cwd(), 'resources/bin/kibu-helper'))
 const browser = new ManagedBrowser(join(homedir(), 'Library/Application Support/kibu/browser-profile-eval'), join(process.cwd(), 'downloads'), () => {})
 

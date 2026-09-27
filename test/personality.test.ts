@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { checkIn, idleRemark, onStart, successMood, hello, reactions } from '../src/renderer/src/lib/personality.js'
+import { SURPRISES, checkIn, idleRemark, onStart, successMood, hello, reactions, type Line } from '../src/renderer/src/lib/personality.js'
 import { MOODS } from '../src/renderer/src/components/Sprite.js'
 import { parseBlocks, plainText, stripEmoji } from '../src/renderer/src/components/Markdown.js'
 
@@ -23,7 +23,7 @@ test('unprompted offers never run anything: they only fill the composer or open 
 })
 
 test('every line uses a mood the face can draw', () => {
-  const lines = [hello(8), hello(23), onStart('find my passport'), onStart('tidy downloads'), onStart('what is 2+2?'), ...Object.values(reactions).map((f) => f(2))]
+  const lines = [hello(8), hello(23), onStart('find my passport'), onStart('tidy downloads'), onStart('what is 2+2?'), ...Object.values(reactions).map((f) => (f as (n: number) => Line)(2)), reactions.landed(false), ...SURPRISES]
   for (const l of lines) assert.ok(MOODS.includes(l.mood), `${l.text} → ${l.mood}`)
 })
 
