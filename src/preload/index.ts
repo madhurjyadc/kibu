@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { BrainSnapshot } from '../shared/brain.js'
 import { IPC } from '../shared/protocol.js'
 import type {
   AnswerQuestionRequest,
@@ -27,6 +28,11 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 const bridge: KibuBridge & { getPathForFile(file: File): string } = {
+  getBrain: () => ipcRenderer.invoke(IPC.brainGet),
+  brainRequest: (req) => ipcRenderer.invoke(IPC.brainRequest, req),
+  openBrain: () => ipcRenderer.invoke(IPC.brainOpen),
+  onBrainChanged: (cb) => subscribe<BrainSnapshot>(IPC.onBrain, cb),
+  onBrainOpen: (cb) => subscribe<void>(IPC.onBrainOpen, cb),
   startTask: (req: StartTaskRequest) => ipcRenderer.invoke(IPC.taskStart, req),
   pauseTask: (taskId) => ipcRenderer.invoke(IPC.taskPause, taskId),
   resumeTask: (taskId) => ipcRenderer.invoke(IPC.taskResume, taskId),

@@ -1,3 +1,4 @@
+import { runBrainWorkflow, isBrainRequest } from '../workflows/brain.js'
 import { randomUUID } from 'node:crypto'
 import type { ZodType } from 'zod'
 import { Planner, addCost, type PlannerLike } from '../model/planner.js'
@@ -55,6 +56,7 @@ export interface RunnerHooks {
 export type { MemoryEvent }
 
 export interface RunnerDeps {
+  brain?: (request: import('../../shared/brain.js').BrainRequest) => Promise<import('../../shared/brain.js').BrainSnapshot>
   os: OsAdapter
   browser: BrowserSession
   registry: ToolRegistry
@@ -93,12 +95,12 @@ export function isNarration(text: string): boolean {
 
 /** Which tool capabilities each route unlocks. Tool availability is scoped. */
 const ROUTE_CAPABILITIES: Record<string, string[]> = {
-  files: ['files', 'shell', 'user.interact', 'mac.read'],
-  desktop: ['files.read', 'shell', 'desktop', 'mac', 'user.interact'],
-  browser: ['files.read', 'browser', 'yourbrowser', 'mac.read', 'user.interact'],
-  apps: ['files.read', 'shell', 'mac', 'user.interact'],
-  mixed: ['files', 'shell', 'desktop', 'browser', 'yourbrowser', 'mac', 'user.interact'],
-  unclear: ['files', 'shell', 'desktop', 'browser', 'yourbrowser', 'mac', 'user.interact']
+  files: ['brain', 'files', 'shell', 'user.interact', 'mac.read'],
+  desktop: ['brain', 'files.read', 'shell', 'desktop', 'mac', 'user.interact'],
+  browser: ['brain', 'files.read', 'browser', 'yourbrowser', 'mac.read', 'user.interact'],
+  apps: ['brain', 'files.read', 'shell', 'mac', 'user.interact'],
+  mixed: ['brain', 'files', 'shell', 'desktop', 'browser', 'yourbrowser', 'mac', 'user.interact'],
+  unclear: ['brain', 'files', 'shell', 'desktop', 'browser', 'yourbrowser', 'mac', 'user.interact']
 }
 
 /** Which tools each Jev-chosen family unlocks. */
@@ -273,6 +275,10 @@ export class TaskRunner {
         this.answerAboutSelf()
         return this.task
       }
+      if (this.deps.brain && this.deps.registry.get('kibu_workspace')) {
+        const local = await runBrainWorkflow(this.task.request, this.deps.droppedPaths, this.workflowContext(), this.deps.previousApp ?? this.deps.frontWindow?.name)
+        if (local) { this.completeFrom(local); return this.task }
+      }
       await this.understand()
       // A known task shape is handled by code plus Jev, with no planning
       // model involved at all. Only novel requests reach the planner.
@@ -350,7 +356,7 @@ export class TaskRunner {
 
   /** Answers a question about Kibu itself, with no model call at all. */
   private answerAboutSelf(): void {
-    const self = describeSelf(this.deps.os, this.canPlan(), this.deps.workflowsEnabled)
+    const self = describeSelf(this.deps.os, this.canPlan(), this.deps.workflowsEnabled, !!this.deps.brain)
     this.evidence = self.evidence
     this.setStatus('succeeded', 'Said hello')
     this.hooks.onPetState('finished')
@@ -380,7 +386,7 @@ export class TaskRunner {
     // vague request. Asking "what do you mean?" when the user just told you
     // is the single most annoying thing this loop can do.
     const following = this.deps.previousTurn !== null
-    if (route.needsClarification && !following) {
+    if (route.needsClarification && !following && !(this.deps.brain && isBrainRequest(this.task.request))) {
       const answer = await this.ask({
         reason: 'ambiguous',
         prompt: `I want to get this right — what would you like me to do?\n\nYou asked: "${this.task.request}"`,
@@ -464,7 +470,7 @@ export class TaskRunner {
    * the planner path has.
    */
   private async tryWorkflow(): Promise<boolean> {
-    if (!this.deps.workflowsEnabled) return false
+    if (!this.deps.workflowsEnabled || (this.deps.brain && isBrainRequest(this.task.request))) return false
 
     const wfCtx = this.workflowContext()
     const route = (this.task as TaskState & { route?: string }).route ?? 'unclear'
@@ -578,7 +584,7 @@ export class TaskRunner {
     if (setup && setup.families.length) {
       return this.deps.registry.all().filter(
         (t) =>
-          t.capability === 'user.interact' ||
+          t.capability === 'user.interact' || t.capability === 'brain' ||
           MAC_FAMILIES.context!.includes(t.name) ||
           setup.families.some((f) => familyTools(f, t, setup))
       )
@@ -924,6 +930,10 @@ export class TaskRunner {
   /** Returns a reason when this call was explicitly turned down earlier. */
   private rejectedOperation(toolName: string, input: unknown): string | null {
     if (!this.rejectedOps.size) return null
+    if (toolName === 'files_prepare_copies') {
+      const paths = (input as { paths?: string[] }).paths ?? []
+      if (paths.some(path => [...this.rejectedOps].some(key => key.startsWith(`${normalizePath(path)}\u0000`)))) return 'The user declined preparing these files. Do not retry.'
+    }
     if (!['files_move', 'files_rename', 'files_copy'].includes(toolName)) return null
     const { from, to } = (input as { from?: string; to?: string }) ?? {}
     if (!from || !to) return null
@@ -1073,6 +1083,7 @@ export class TaskRunner {
   private context(): ToolContext {
     return {
       task: this.task,
+      brain: this.deps.brain,
       os: this.deps.os,
       browser: this.deps.browser,
       log: (level, message, data) => this.log(level, 'tool', message, data),

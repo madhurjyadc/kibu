@@ -16,6 +16,7 @@ import type {
  * privileged surface enumerable.
  */
 export interface ToolContext {
+  brain?: (request: import('../../shared/brain.js').BrainRequest) => Promise<import('../../shared/brain.js').BrainSnapshot>
   task: TaskState
   os: OsAdapter
   log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: unknown): void

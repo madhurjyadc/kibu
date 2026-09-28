@@ -6,6 +6,10 @@
  * talks to the host over a narrow, typed message channel. The UI renderer has
  * no path to any of it.
  */
+import { randomUUID } from 'node:crypto'
+import type { BrainRequest, BrainSnapshot } from '../shared/brain.js'
+import { documentTools } from './tools/documents.js'
+import { brainTools } from './tools/brain.js'
 import { join } from 'node:path'
 import { ToolRegistry } from './tools/registry.js'
 import { fileTools } from './tools/files.js'
@@ -37,9 +41,18 @@ const browser = new ManagedBrowser(profileDir, downloadDir, (level, message) =>
 )
 
 const registry = new ToolRegistry()
-registry.registerAll([...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools, ...yourBrowserTools, rememberTool])
+registry.registerAll([...documentTools, ...brainTools, ...fileTools, ...shellTools, ...userTools, ...desktopTools, ...browserTools, ...macTools, ...yourBrowserTools, rememberTool])
 
 let runner: TaskRunner | null = null
+const pendingBrain = new Map<string, { resolve: (state: BrainSnapshot) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+function requestBrain(taskId: string, input: BrainRequest): Promise<BrainSnapshot> {
+  return new Promise((resolve, reject) => {
+    const callId = randomUUID()
+    const timer = setTimeout(() => { pendingBrain.delete(callId); reject(new Error('Workspace response timed out. Check the workspace before retrying.')) }, 15000)
+    pendingBrain.set(callId, { resolve, reject, timer })
+    send({ type: 'tool-call', callId, taskId, tool: 'brain', input })
+  })
+}
 
 /**
  * Only one task may drive the real desktop at a time. The host owns the
@@ -66,6 +79,7 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
     msg.task,
     {
       os,
+      brain: (request) => requestBrain(msg.task.id, request),
       browser,
       registry,
       model: msg.model,
@@ -99,6 +113,15 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
 
 process.on('message', (raw: HostToRuntime) => {
   switch (raw.type) {
+    case 'tool-result': {
+      const pending = pendingBrain.get(raw.callId)
+      if (pending) {
+        clearTimeout(pending.timer); pendingBrain.delete(raw.callId)
+        if (raw.ok) pending.resolve(raw.value as BrainSnapshot)
+        else pending.reject(new Error(raw.error ?? 'Workspace request failed.'))
+      }
+      break
+    }
     case 'start':
       void startTask(raw)
       break

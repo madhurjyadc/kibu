@@ -1,9 +1,10 @@
 import { externalWebUrl } from '../shared/web-url.js'
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell, dialog, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell, dialog, Tray, Menu, nativeImage, Notification, powerMonitor } from 'electron'
 import { join, dirname } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { existsSync } from 'node:fs'
+import { BrainStore } from './services/brain.js'
 import { Store } from './services/db.js'
 import { Secrets } from './services/secrets.js'
 import { RuntimeHost } from './services/runtime-host.js'
@@ -44,6 +45,10 @@ import { claudeCodeAvailable } from '../runtime/model/claude-code-planner.js'
 const isDev = !app.isPackaged
 const RENDERER_URL = process.env.ELECTRON_RENDERER_URL ?? null
 
+let brain: BrainStore
+let brainClock: ReturnType<typeof setInterval> | null = null
+let brainSleeping = false
+let brainLocked = false
 let store: Store
 let secrets: Secrets
 let runtime: RuntimeHost
@@ -267,6 +272,16 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
       }
       break
     }
+    case 'tool-call': {
+      try {
+        if (msg.tool !== 'brain' || !currentTask || msg.taskId !== currentTask.id || isTerminal(currentTask.status)) throw new Error('This workspace request is not part of an active task.')
+        const value = brain.request(msg.input)
+        broadcast(IPC.onBrain, brain.snapshot())
+        runtime.send({ type: 'tool-result', callId: msg.callId, ok: true, value })
+        tickBrain()
+      } catch (err) { runtime.send({ type: 'tool-result', callId: msg.callId, ok: false, error: err instanceof Error ? err.message : String(err) }) }
+      break
+    }
     case 'pet-state':
       setPetState(msg.state)
       break
@@ -464,6 +479,7 @@ function createTray(): void {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open Kibu', accelerator: settings.shortcut, click: () => togglePanel(true) },
+      { label: 'Workspace & timers', click: openBrain },
       { label: 'Bring pet back into view', click: () => recentrePet() },
       { label: 'Center the panel', click: () => recenterPanel() },
       { type: 'separator' },
@@ -503,7 +519,36 @@ async function captureFrontWindow(): Promise<void> {
   }
 }
 
+function openBrain(): void {
+  togglePanelShow()
+  panelWindow?.webContents.send(IPC.onBrainOpen)
+}
+
+function tickBrain(): void {
+  if (quitting || brainSleeping || brainLocked) return
+  try {
+    if (powerMonitor.getSystemIdleState(1) === 'locked' || !brain.hasDue()) return
+    const { state, alerts } = brain.tick()
+    if (!alerts.length) return
+    broadcast(IPC.onBrain, state)
+    if (Notification.isSupported()) {
+      const first = alerts[0]!
+      const notification = new Notification({ title: first.timer ? 'Time’s up' : 'Kibu reminder', body: alerts.length === 1 ? first.title : `${first.title} + ${alerts.length - 1} more`, silent: false })
+      notification.on('click', openBrain)
+      notification.show()
+    }
+  } catch (err) { console.error('[brain]', err) }
+}
+
 function registerIpc(): void {
+  ipcMain.handle(IPC.brainGet, () => brain.snapshot())
+  ipcMain.handle(IPC.brainOpen, openBrain)
+  ipcMain.handle(IPC.brainRequest, (_e, req: unknown) => {
+    const result = brain.request(req)
+    broadcast(IPC.onBrain, brain.snapshot())
+    tickBrain()
+    return result
+  })
   ipcMain.handle(IPC.taskStart, (_e, req: StartTaskRequest) => {
     if (typeof req?.request !== 'string' || !req.request.trim()) {
       throw new Error('a request is required')
@@ -613,6 +658,11 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.settingsGet, () => settings)
   ipcMain.handle(IPC.settingsSet, (_e, next: Partial<Settings>) => {
+    if (next.launchAtLogin !== undefined) {
+      if (typeof next.launchAtLogin !== 'boolean') throw new Error('Invalid login preference.')
+      if (!app.isPackaged) throw new Error('Open at login is available in an installed Kibu build. During development, keep Kibu running for reminders.')
+      app.setLoginItemSettings({ openAtLogin: next.launchAtLogin })
+    }
     const before = settings.shortcut
     const updated = saveSettings(next ?? {})
     if (updated.shortcut !== before) registerShortcut(updated.shortcut)
@@ -762,6 +812,7 @@ if (!singleInstance) {
 
   app.whenReady().then(() => {
     store = new Store(app.getPath('userData'))
+    brain = new BrainStore(app.getPath('userData'))
     secrets = new Secrets(store)
     settings = loadSettings()
 
@@ -866,6 +917,12 @@ if (!singleInstance) {
       saveSettings({ panelX: x, panelY: y })
     })
 
+    brainClock = setInterval(tickBrain, 1000)
+    powerMonitor.on('suspend', () => { brainSleeping = true })
+    powerMonitor.on('resume', () => { brainSleeping = false; tickBrain() })
+    powerMonitor.on('lock-screen', () => { brainLocked = true })
+    powerMonitor.on('unlock-screen', () => { brainLocked = false; tickBrain() })
+    petWindow.webContents.on('did-finish-load', tickBrain)
     createTray()
     if (!registerShortcut(settings.shortcut)) {
       console.warn(`Could not register the global shortcut ${settings.shortcut}; it may be taken.`)
@@ -884,6 +941,8 @@ if (!singleInstance) {
     globalShortcut.unregisterAll()
     desktopSession?.dispose()
     await runtime?.stop()
+    if (brainClock) clearInterval(brainClock)
+    brain?.close()
     store?.close()
     app.exit(0)
   })

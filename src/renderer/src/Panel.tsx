@@ -1,3 +1,6 @@
+import { Brain, useBrain } from './components/Brain.js'
+import { dueItems, timerRemaining, type BrainTimer } from '../../shared/brain.js'
+import { Elapsed, Status, clockText, taskStatus } from './components/Dots.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BenchRow, FrontWindow, LogEntry, PanelState, PetState, TaskState, TaskSummaryRow, UserQuestion } from '../../shared/protocol.js'
 import { COMMANDS, Prompt } from './components/Prompt.js'
@@ -10,7 +13,7 @@ import { MOOD_FOR, Sprite, type Mood } from './components/Sprite.js'
 import { Icon, type IconName } from './components/Icon.js'
 import { Markdown, plainText } from './components/Markdown.js'
 
-type View = 'home' | 'steps' | 'past' | 'keys' | 'tune' | 'help' | 'bench'
+type View = 'brain' | 'home' | 'steps' | 'past' | 'keys' | 'tune' | 'help' | 'bench'
 /** Matches the host's follow-up window: older turns are a different conversation. */
 const THREAD_WINDOW_MS = 10 * 60 * 1000
 const RUNNING = ['pending', 'observing', 'planning', 'executing', 'verifying', 'awaiting_user', 'paused']
@@ -20,7 +23,7 @@ const IDEAS: { title: string; prompt: string; icon: IconName; hint: string }[] =
   { title: 'Rename', prompt: 'Rename these files consistently', icon: 'rename', hint: 'files to one pattern' }
 ]
 /** What a press may land on without moving the window. */
-const NO_DRAG = 'button, a, input, textarea, select, label, summary, kbd, [role="button"]:not(.bar-face), .kibu-says, .asked, .said, pre, .ops, .peek, .palette, .chips, .proof, .steps, .pane, .help'
+const NO_DRAG = 'button, a, input, textarea, select, label, summary, kbd, [role="button"]:not(.bar-face), .kibu-says, .asked, .said, pre, .ops, .peek, .palette, .chips, .proof, .steps, .pane, .help, .brain'
 
 /** How the creature reacts to a half-typed request. */
 function moodForDraft(text: string, fallback: Mood): Mood {
@@ -32,9 +35,11 @@ function moodForDraft(text: string, fallback: Mood): Mood {
   return 'listening'
 }
 
-const TITLES: Record<View, string> = { home: 'Kibu', past: 'History', steps: 'Steps', tune: 'Settings', keys: 'Connections', help: 'Shortcuts', bench: 'Diagnostics' }
+const TITLES: Record<View, string> = { brain: 'Workspace', home: 'Kibu', past: 'History', steps: 'Steps', tune: 'Settings', keys: 'Connections', help: 'Shortcuts', bench: 'Diagnostics' }
 
 export function Panel(): React.JSX.Element {
+  const brain = useBrain()
+  useEffect(() => window.kibu.onBrainOpen(() => setView('brain')), [])
   const [view, setView] = useState<View>('home')
   const [task, setTask] = useState<TaskState | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -121,7 +126,7 @@ export function Panel(): React.JSX.Element {
       // The fixed parts, measured directly: mid-animation the window height
       // is not the panel's height, so it cannot be used to work them out.
       const root = el.parentElement!
-      const chrome = [...root.children].filter((c) => c !== el && c.matches('.bar, .statusbar, .return-task')).reduce((h, c) => h + (c as HTMLElement).offsetHeight, 0) + 2
+      const chrome = [...root.children].filter((c) => c !== el && c.matches('.bar, .statusbar')).reduce((h, c) => h + (c as HTMLElement).offsetHeight, 0) + 2
       void window.kibu.resizePanel(Math.ceil((content + chrome) / 20) * 20)
     }
     measure()
@@ -158,6 +163,7 @@ export function Panel(): React.JSX.Element {
     setAside(null)
     try {
       switch (name) {
+        case 'workspace': setView('brain'); return
         case 'undo': {
           const rows = await window.kibu.listHistory(25)
           const target = task?.summary?.undoable ? task.id : rows.find((r) => r.undoable)?.id
@@ -239,7 +245,6 @@ export function Panel(): React.JSX.Element {
   /** A plain answer: nothing was done, so there is no outcome to badge. */
   const isChat = !!task && task.status === 'succeeded' && task.actions.length === 0 && !task.summary?.evidence.length
   const barMood: Mood = task && view === 'home' && !draft ? MOOD_FOR[task.petState] : homeMood
-  const statusText = running ? (task?.status === 'awaiting_user' ? 'needs you' : task?.status === 'paused' ? 'paused' : 'working') : desktopActive ? 'driving' : 'ready'
 
   return (
     <div className={`kibu ${dragging ? 'is-dropping' : ''} ${panel.docked ? 'is-docked' : ''} ${moving ? 'is-moving' : ''} ${view === 'home' && !task ? 'is-home' : ''}`}
@@ -271,15 +276,17 @@ export function Panel(): React.JSX.Element {
       <main className={`workspace ${view === 'home' && !task ? 'home-workspace' : ''}`} ref={workspace}>
         {desktopActive && <div className="driving-line"><span className="live" />Kibu is acting for you<button onClick={() => void window.kibu.stopDesktopSession()}>Stop</button></div>}
         {aside && <div className="notice" role="status"><span>{aside}</span><button className="icon-button" aria-label="Dismiss message" onClick={() => setAside(null)}><Icon name="close" size={15} /></button></div>}
+        {view === 'home' && dropped.length > 0 && <div className="capture-actions" aria-label="Use attached files"><button onClick={() => compose('Save these for later')}>Keep with Kibu</button><button onClick={() => compose('Read these documents and propose tasks for my Kibu workspace, keeping the source links.')}>Extract tasks</button><button onClick={() => compose('Prepare PDF copies of these files under 2 MB each.')}>Prepare copies</button></div>}
         {view === 'home' && !task && <section className="idle-space">
-          <ul className="rows" aria-label="Actions">{IDEAS.map((idea, i) => <li key={idea.title}><button className="row-button" aria-label={idea.title} style={{ animationDelay: `${i * 40}ms` }} onClick={() => compose(idea.prompt)}><span className="row-icon"><Icon name={idea.icon} size={15} /></span><span className="row-title">{idea.title}</span><span className="row-hint" data-hint={idea.hint} aria-hidden="true" /></button></li>)}</ul>
+          <ul className="rows" aria-label="Actions">
+            <li><button className="row-button workspace-row" aria-label="Your workspace" onClick={() => setView('brain')}><span className="row-icon"><Icon name="list" size={15} /></span><span className="row-title">Workspace</span><WorkspaceBadge timer={brain.timer} due={dueItems(brain).length} kept={brain.items.filter(i => i.status === 'open').length} /></button></li>{IDEAS.map((idea, i) => <li key={idea.title}><button className="row-button" aria-label={idea.title} style={{ animationDelay: `${i * 40}ms` }} onClick={() => compose(idea.prompt)}><span className="row-icon"><Icon name={idea.icon} size={15} /></span><span className="row-title">{idea.title}</span><span className="row-hint" data-hint={idea.hint} aria-hidden="true" /></button></li>)}</ul>
           {again.length > 0 && <><p className="rows-label">Recent</p><ul className="rows" aria-label="Do again">{again.map((r) => <li key={r.id}><button className="row-button" title={r.request} onClick={() => compose(r.request)}><span className="row-icon"><Icon name="clock" size={15} /></span><span className="row-title again-text">{r.request}</span></button></li>)}</ul></>}
         </section>}
         {view === 'home' && task && <section className="task-page">
-          <div className={`task-toolbar ${isChat ? 'is-chat' : ''}`}><span className={`task-status status-pill is-${task.status} ${isChat ? 'is-hidden' : ''}`}><i />{task.status === 'awaiting_user' ? 'Your input' : task.status === 'succeeded' ? 'Done' : task.status === 'failed' ? 'Needs attention' : task.status === 'cancelled' ? 'Stopped' : task.status === 'paused' ? 'Paused' : 'Working'}</span>
+          {!running && <div className={`task-toolbar ${isChat ? 'is-chat' : ''}`}>{!running && <Status {...taskStatus(task.status)} className={isChat ? 'is-hidden' : ''} />}
             {!running && (task.status === 'failed' || task.status === 'cancelled') && <button className="subtle-button retry" onClick={() => void send(task.request.split('\n\nClarification:')[0]!, false).catch(reportError)}>Try again</button>}
             {!running && <><button className="icon-button" aria-label="Delete this task" title="Delete task" onClick={() => setConfirmDelete(!confirmDelete)}><Icon name="trash" size={16} /></button><button className="icon-button" aria-label="New task" title="New conversation" onClick={() => { setTask(null); taskRef.current = null; setThread([]); setAside(null) }}><Icon name="plus" /></button></>}
-          </div>
+          </div>}
           {confirmDelete && <div className="delete-confirm"><span>Delete task and undo history? Files stay.</span><button className="danger-button" onClick={() => void deleteTask(task.id).catch(reportError)}>Delete</button><button className="icon-button" aria-label="Cancel deletion" onClick={() => setConfirmDelete(false)}><Icon name="close" size={16} /></button></div>}
           {thread.map((t) => <div className="turn-past" key={t.id}>
             <p className="asked">{t.request}</p>
@@ -291,18 +298,24 @@ export function Panel(): React.JSX.Element {
           {view === 'past' && history.some((r) => !RUNNING.includes(r.status)) && <button className="subtle-button" onClick={() => setConfirmClear(!confirmClear)}>Clear</button>}
         </div>}
         {view === 'past' && confirmClear && <div className="delete-confirm"><span>Delete finished tasks and undo history? Files stay.</span><button className="danger-button" onClick={async () => { try { await window.kibu.clearHistory(); await refreshHistory(); setConfirmClear(false) } catch (e) { reportError(e) } }}>Delete all</button><button className="icon-button" aria-label="Cancel clear history" onClick={() => setConfirmClear(false)}><Icon name="close" size={16} /></button></div>}
+        {view === 'brain' && <Brain state={brain} onCompose={compose} />}
         {view === 'steps' && <Steps task={task} logs={task ? logs.filter((l) => l.taskId === task.id) : []} />}
         {view === 'past' && <Past rows={history} onOpen={openTask} onDelete={deleteTask} onUndo={async (id) => { const report = await window.kibu.undoTask(id); await refreshHistory(); return report }} />}
         {(view === 'keys' || view === 'tune') && <Tune only={view === 'keys' ? 'keys' : undefined} onKeyChange={() => void refreshSetup().catch(reportError)} />}
         {view === 'bench' && <Bench rows={bench} running={benching} />}
         {view === 'help' && <div className="help-page"><p className="capability-note">Files · Mac apps · Browser</p>{blind && <button className="permission-link" onClick={() => setView('tune')}>Enable app control →</button>}<ul className="help">{COMMANDS.map((c) => <li key={c.name}><button className="cmd" onClick={() => void command(c.name)}>/{c.name}</button><span className="dim">{c.hint}</span></li>)}</ul></div>}
       </main>
-      {running && view !== 'home' && <button className="return-task" onClick={() => setView('home')}><span className="pulse" />{task?.status === 'awaiting_user' ? 'Your input needed' : 'Task in progress'}<Icon name="arrow" size={15} /></button>}
       <footer className="statusbar">
-        {running
-          ? <span className="status-text is-live"><span className="pulse" />{statusText}</span>
-          : <span className="hints" aria-hidden="true"><kbd>↵</kbd>Ask<i /><kbd>/</kbd>Commands{front && <><i /><kbd>⌥↵</kbd>With {front.name}</>}</span>}
+        {running && task
+          ? view === 'home'
+            ? <span className="status-now" role="status"><Status {...taskStatus(task.status)} detail={<Elapsed since={task.createdAt} />} /></span>
+            : <button className="status-now is-away" onClick={() => setView('home')} aria-label={`${task.status === 'awaiting_user' ? 'Your input needed' : 'Task in progress'}, back to the task`}>
+                <Status {...taskStatus(task.status)} detail={<Elapsed since={task.createdAt} />} /><span className="status-line">{task.status === 'awaiting_user' ? 'Your input needed' : task.statusLine || 'Task in progress'}</span><Icon name="arrow" size={14} /></button>
+          : desktopActive
+            ? <span className="status-now" role="status"><Status kind="working" label="Driving" /></span>
+            : <span className="hints" aria-hidden="true"><kbd>↵</kbd>Ask<i /><kbd>/</kbd>Commands{front && <><i /><kbd>⌥↵</kbd>With {front.name}</>}</span>}
         <nav aria-label="Navigation">
+          <button className={`icon-button ${view === 'brain' ? 'selected' : ''}`} aria-label="Workspace" title="Workspace" onClick={() => setView('brain')}><Icon name="list" size={16} /></button>
           <button className={`icon-button ${view === 'past' ? 'selected' : ''}`} aria-label="History" title="History" onClick={() => void command('past')}><Icon name="clock" size={16} /></button>
           <button className={`icon-button ${view === 'tune' ? 'selected' : ''}`} aria-label="Settings" title={hasKey === false ? 'Settings · connect a model for app and browser tasks' : 'Settings'} onClick={() => setView('tune')}><Icon name="settings" size={16} />{hasKey === false && <i className="connection-dot" />}</button>
           <button className="icon-button" aria-label="Help" title="Help" onClick={() => setView('help')}><Icon name="help" size={16} /></button>
@@ -314,10 +327,33 @@ export function Panel(): React.JSX.Element {
       </footer>
       <button className="island" aria-label="Open Kibu" title="Open Kibu" tabIndex={panel.docked ? 0 : -1} aria-hidden={!panel.docked} onClick={() => void window.kibu.minimizePanel()}>
         <span className="island-face"><Sprite state={petState} mood={task && !running ? MOOD_FOR[task.petState] : MOOD_FOR[petState]} size={32} /></span>
-        <span className="island-text">{islandLine}</span>
+        <span className="island-text">{!running && brain.timer ? <IslandTimer timer={brain.timer} /> : islandLine}</span>
         {running ? <span className="island-wave" aria-hidden="true"><i /><i /><i /><i /></span> : <Icon name="expand" size={14} />}
       </button>
       {dragging && <div className="drop-overlay"><Icon name="attach" size={30} /><strong>Drop files</strong></div>}
     </div>
   )
+}
+
+/** Workspace at a glance: the timer if one is running, else what's waiting. */
+function WorkspaceBadge({ timer, due, kept }: { timer: BrainTimer | null; due: number; kept: number }): React.JSX.Element | null {
+  if (timer) return <span className={`row-badge is-timer is-${timer.status}`}><TimerText timer={timer} /></span>
+  if (due) return <span className="row-badge is-due">{due} due</span>
+  if (kept) return <span className="row-badge">{kept} kept</span>
+  return <span className="row-hint" data-hint="notes, reminders, focus timer" aria-hidden="true" />
+}
+
+function IslandTimer({ timer }: { timer: BrainTimer }): React.JSX.Element {
+  return <>{timer.label} · <span className="island-clock">{timer.status === 'ringing' ? 'time’s up' : <TimerText timer={timer} />}</span></>
+}
+
+/** A countdown that ticks by itself, so the panel does not re-render every second. */
+function TimerText({ timer }: { timer: BrainTimer }): React.JSX.Element {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    if (timer.status !== 'running') return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [timer.status])
+  return <>{timer.status === 'paused' ? `${clockText(timerRemaining(timer, now))} paused` : clockText(timerRemaining(timer, now))}</>
 }

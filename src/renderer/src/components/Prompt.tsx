@@ -5,6 +5,7 @@ import { Icon } from './Icon.js'
 
 /** Everything Kibu can be told to do that isn't a task. */
 export const COMMANDS = [
+  { name: 'workspace', hint: 'Notes, reminders, projects and timers' },
   { name: 'undo', hint: 'Undo file changes' },
   { name: 'steps', hint: 'Task details' },
   { name: 'past', hint: 'History' },

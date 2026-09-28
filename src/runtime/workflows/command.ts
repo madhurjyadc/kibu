@@ -98,7 +98,8 @@ export const commandWorkflow: Workflow = {
 export async function buildPlan(
   request: string,
   droppedPaths: string[],
-  ctx: Pick<WorkflowContext, 'ask' | 'log'>
+  ctx: Pick<WorkflowContext, 'ask' | 'log'>,
+  resolve: { folder: typeof resolveFolder; app: typeof resolveApp } = { folder: resolveFolder, app: resolveApp }
 ): Promise<Plan> {
   const plan: Plan = { steps: [] }
 
@@ -130,7 +131,7 @@ export async function buildPlan(
   if (make) {
     const name = make[1]!.trim()
     const where = make[2]?.trim()
-    const parent = where ? await resolveFolder(where, ctx) : homedir()
+    const parent = where ? await resolve.folder(where, ctx) : homedir()
     if (where && !parent) {
       plan.unresolvedFolder = where
       return plan
@@ -145,13 +146,13 @@ export async function buildPlan(
     const appName = openIn[2]!.trim()
     // "open it in Zed" means the folder just created, or what was dropped.
     const target = what && !/^(it|that|this|them)$/i.test(what)
-      ? ((await resolveFolder(what, ctx)) ?? (isAbsolute(what) ? what : null))
+      ? ((await resolve.folder(what, ctx)) ?? (isAbsolute(what) ? what : null))
       : (created ?? droppedPaths[0] ?? null)
     if (!target) {
       plan.unresolvedFolder = what ?? 'the thing to open'
       return plan
     }
-    const app = await resolveApp(appName, ctx)
+    const app = await resolve.app(appName, ctx)
     if (!app) {
       plan.unresolvedApp = appName
       return plan

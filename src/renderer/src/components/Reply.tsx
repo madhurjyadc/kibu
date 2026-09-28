@@ -49,7 +49,7 @@ export function Reply({
       <p className="asked">{task.request}</p>
       <div className="kibu-turn">
       <div className="kibu-says">
-        <div className="says-head"><i className="says-led" />Kibu{!running && <span>{took(task)}</span>}</div>
+        <div className="says-head">Kibu{!running && <span>{took(task)}</span>}</div>
 
       {!running && !summary && <p className="said">{task.error || task.statusLine || "Task ended."}</p>}
       {running && task.plan.length > 0 && <details><summary>Plan</summary><ol className="task-plan">{task.plan.map((step) => <li key={step.id} className={step.status}><span>{step.status === "done" ? "✓" : step.status === "active" ? "◉" : "○"}</span>{step.description}</li>)}</ol></details>}

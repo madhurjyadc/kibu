@@ -1,5 +1,6 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { PetState } from '../../../shared/protocol.js'
+import { clockText, dotText } from './Dots.js'
 
 export interface Look { x: number; y: number }
 
@@ -258,8 +259,12 @@ export function faceGrid(mood: Mood, t: number, look: Look, blinking: boolean): 
   return grid
 }
 
-export function Sprite({ state, mood, size = 116, look, quiet = false }: {
+/** A running focus timer turns the pebble into a little TV that shows it. */
+export interface SpriteTimer { remainingMs: number; progress: number; status: 'running' | 'paused' | 'ringing' }
+
+export function Sprite({ state, mood, size = 116, look, quiet = false, timer }: {
   state: PetState; mood?: Mood; size?: number; look?: Look; quiet?: boolean
+  timer?: SpriteTimer
 }): React.JSX.Element {
   const uid = useId().replace(/:/g, '')
   const m = mood ?? MOOD_FOR[state]
@@ -267,6 +272,8 @@ export function Sprite({ state, mood, size = 116, look, quiet = false }: {
   const t = useTicks(quiet ? undefined : FRAME_MS[m])
   const blinking = useBlink(!quiet)
   const grid = faceGrid(m, t, look ?? { x: 0, y: 0 }, blinking)
+  const tv = useLinger(timer, 700)
+  const tvOn = useSoon(!!timer)
 
   // The display sits in a 120 × 100 pebble; each dot on a 6-unit pitch.
   const pitch = 5.6
@@ -285,8 +292,8 @@ export function Sprite({ state, mood, size = 116, look, quiet = false }: {
   }
 
   return (
-    <svg className={`kb-sprite mood-${m} is-${state} ${quiet ? 'is-quiet' : ''}`} viewBox="0 0 120 112"
-      width={size} height={(size * 112) / 120} role="img" aria-label={`Kibu is ${state}`}
+    <svg className={`kb-sprite mood-${m} is-${state} ${quiet ? 'is-quiet' : ''} ${tvOn ? 'is-timer' : ''} ${tv ? `has-tv tv-${tv.status}` : ''}`} viewBox="0 0 120 112"
+      width={size} height={(size * 112) / 120} role="img" aria-label={timer ? `Kibu timer ${clockText(timer.remainingMs)}, ${timer.status}` : `Kibu is ${state}`}
       style={{ ['--kb-accent' as string]: face.accent }}>
       <defs>
         <linearGradient id={`${uid}-shell`} x1="0" y1="0" x2="0" y2="1">
@@ -302,14 +309,106 @@ export function Sprite({ state, mood, size = 116, look, quiet = false }: {
       </defs>
       {!quiet && <ellipse className="kb-floor" cx="60" cy="104" rx="40" ry="6" fill={`url(#${uid}-glow)`} />}
       <g className="kb-body">
-        <rect className="kb-shell" x="6" y="8" width="108" height="88" rx="34" fill={`url(#${uid}-shell)`} />
-        <rect x="6.5" y="8.5" width="107" height="87" rx="33.5" fill="none" stroke={`url(#${uid}-rim)`} />
-        <path d="M30 13.5Q60 9 90 13.5" stroke="#fff" strokeOpacity=".22" strokeWidth="2" strokeLinecap="round" fill="none" />
-        <g filter={`url(#${uid}-bloom)`}>{dots}</g>
-        <circle className="kb-led" cx="98" cy="22" r="1.8" fill={face.accent} />
+        <g className="kb-pebble">
+          <rect className="kb-shell" x="6" y="8" width="108" height="88" rx="34" fill={`url(#${uid}-shell)`} />
+          <rect x="6.5" y="8.5" width="107" height="87" rx="33.5" fill="none" stroke={`url(#${uid}-rim)`} />
+          <path d="M30 13.5Q60 9 90 13.5" stroke="#fff" strokeOpacity=".22" strokeWidth="2" strokeLinecap="round" fill="none" />
+          <g filter={`url(#${uid}-bloom)`}>{dots}</g>
+          <circle className="kb-led" cx="98" cy="22" r="1.8" fill={face.accent} />
+        </g>
       </g>
+      {tv && <TV uid={uid} timer={tv} look={look ?? { x: 0, y: 0 }} />}
     </svg>
   )
+}
+
+/**
+ * Timer mode. The pebble ducks out and a small CRT pops up in its place:
+ * antennae spring up, the screen switches on with a scanline flash, and the
+ * countdown is drawn in the same dots as the face. When time is up the
+ * screen flips between 00:00 and Kibu's own face, calling you over.
+ */
+function TV({ uid, timer, look }: { uid: string; timer: SpriteTimer; look: Look }): React.JSX.Element {
+  const ringing = timer.status === 'ringing'
+  const flip = useTicks(ringing ? 700 : undefined)
+  const showFace = ringing && flip % 2 === 1
+  const lit = timer.status === 'running' ? '#d4ff3a' : '#ffb23e'
+  const { cols, cells } = dotText(clockText(timer.remainingMs))
+  const pitch = 4.4
+  const x0 = 60 - (cols * pitch) / 2 + pitch / 2
+  const y0 = 38
+  const filled = Math.round(Math.max(0, Math.min(1, timer.progress)) * cols)
+  let content: React.JSX.Element[]
+  if (showFace) {
+    const grid = faceGrid('excited', flip, look, false)
+    const p = 3.7
+    content = []
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+      const on = grid.has(r * COLS + c)
+      content.push(<circle key={`f${r}-${c}`} cx={60 - ((COLS - 1) * p) / 2 + c * p} cy={52 - ((ROWS - 1) * p) / 2 + r * p} r={on ? 1.45 : 0.9} className={on ? 'lit' : 'unlit'} fill={on ? lit : '#fff'} opacity={on ? 1 : 0.08} />)
+    }
+  } else {
+    content = cells.map((c, i) => (
+      <circle key={i} cx={x0 + c.col * pitch} cy={y0 + c.row * pitch} r={c.on ? 1.65 : 1} className={c.on ? (c.colon ? 'lit colon' : 'lit') : 'unlit'} fill={c.on ? lit : '#fff'} opacity={c.on ? 1 : 0.08} />
+    ))
+    for (let c = 0; c < cols; c++) {
+      content.push(<circle key={`p${c}`} cx={x0 + c * pitch} cy={69} r={c < filled ? 1.2 : 0.9} className={c < filled ? 'lit bar' : 'unlit'} fill={c < filled ? lit : '#fff'} opacity={c < filled ? 1 : 0.12} />)
+    }
+  }
+  return (
+    <g className="kb-tv" aria-hidden="true">
+      <defs>
+        <clipPath id={`${uid}-screen`}><rect x="15" y="26" width="90" height="52" rx="9" /></clipPath>
+        <radialGradient id={`${uid}-crt`} cx="50%" cy="45%" r="65%"><stop stopColor="#121609" /><stop offset="1" stopColor="#040405" /></radialGradient>
+        <pattern id={`${uid}-scan`} width="4" height="2" patternUnits="userSpaceOnUse"><rect width="4" height=".8" fill="#fff" opacity=".045" /></pattern>
+      </defs>
+      <g className="kb-antennae">
+        <path d="M58 20 44 5M62 20 77 6" stroke="#6b6d72" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="44" cy="5" r="2.2" fill="#8d8f95" />
+        <circle className="kb-tv-led" cx="77" cy="6" r="2.4" fill={lit} />
+        <path d="M51 21a9 7 0 0 1 18 0Z" fill="#1d1e22" />
+      </g>
+      <rect x="25" y="89" width="11" height="7" rx="2.5" fill="#0c0c0e" />
+      <rect x="84" y="89" width="11" height="7" rx="2.5" fill="#0c0c0e" />
+      <rect x="8" y="19" width="104" height="73" rx="17" fill={`url(#${uid}-shell)`} />
+      <rect x="8.5" y="19.5" width="103" height="72" rx="16.5" fill="none" stroke={`url(#${uid}-rim)`} />
+      <rect x="13" y="24" width="94" height="56" rx="11" fill="#050506" stroke="#ffffff10" />
+      <g clipPath={`url(#${uid}-screen)`}>
+        <rect className="kb-tv-glass" x="15" y="26" width="90" height="52" fill={`url(#${uid}-crt)`} />
+        <g className="kb-tv-content" filter={`url(#${uid}-bloom)`}>{content}</g>
+        <rect x="15" y="26" width="90" height="52" fill={`url(#${uid}-scan)`} />
+        <path d="M22 31q16-3 34-2" stroke="#fff" strokeOpacity=".1" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+        <rect className="kb-tv-flash" x="15" y="50.5" width="90" height="3" fill="#f3f4ef" />
+      </g>
+      {[20, 24, 28].map((x) => <circle key={x} cx={x} cy="86" r=".9" fill="#ffffff30" />)}
+      <circle cx="91" cy="86" r="2.2" fill="#232428" stroke="#ffffff18" strokeWidth=".6" />
+      <circle cx="99" cy="86" r="2.2" fill="#232428" stroke="#ffffff18" strokeWidth=".6" />
+    </g>
+  )
+}
+
+/** Keeps the last value around a little after it goes away, so it can animate out. */
+function useLinger<T>(value: T | undefined, ms: number): T | undefined {
+  const last = useRef(value)
+  const [held, setHeld] = useState(false)
+  if (value !== undefined) last.current = value
+  useEffect(() => {
+    if (value !== undefined) { setHeld(true); return }
+    const id = setTimeout(() => setHeld(false), ms)
+    return () => clearTimeout(id)
+  }, [value === undefined, ms])
+  return value ?? (held ? last.current : undefined)
+}
+
+/** True a moment after `flag` turns on, so what mounts in its "off" pose can transition in. */
+function useSoon(flag: boolean): boolean {
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    if (!flag) { setOn(false); return }
+    const id = setTimeout(() => setOn(true), 30)
+    return () => clearTimeout(id)
+  }, [flag])
+  return on
 }
 
 /** A frame counter for animated moods; static moods never re-render. */

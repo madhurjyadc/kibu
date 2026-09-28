@@ -1,3 +1,6 @@
+import { useBrain, useNow } from './components/Brain.js'
+import { dueItems, timerRemaining } from '../../shared/brain.js'
+import { clockText } from './components/Dots.js'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { PetPlay, PetState, TaskState } from '../../shared/protocol.js'
 import { MOOD_FOR, Sprite, type Look, type Mood } from './components/Sprite.js'
@@ -29,6 +32,13 @@ const PET_RUBS = 4
 const PET_WINDOW_MS = 1400
 
 export function Pet(): React.JSX.Element {
+  const brain = useBrain()
+  const now = useNow()
+  const timer = brain.timer
+  const timerActive = useRef(false)
+  timerActive.current = !!timer
+  const due = dueItems(brain, now)[0]
+  const [alertError, setAlertError] = useState<string | null>(null)
   const [state, setState] = useState<PetState>('idle')
   const [task, setTask] = useState<TaskState | null>(null)
   const [bubble, setBubble] = useState<string | null>(null)
@@ -80,7 +90,7 @@ export function Pet(): React.JSX.Element {
 
   /** Say something, with the face to match. Optional remarks respect the "chatty" setting. */
   function say(line: Line, ms = 4500, optional = true): void {
-    if (optional && !chatty.current) { feel(line.mood, Math.min(ms, 2500)); return }
+    if (optional && (timerActive.current || !chatty.current)) { feel(line.mood, Math.min(ms, 2500)); return }
     if (chatTimer.current) clearTimeout(chatTimer.current)
     setChat(line)
     feel(line.mood, Math.min(ms, 3200))
@@ -455,7 +465,8 @@ export function Pet(): React.JSX.Element {
     // A click wakes a nap it asked for, without also opening the panel.
     if (asleepRef.current) { chosenNap.current = false; setAsleep(false); say(reactions.napWake(), 2400); return }
     if (clicks.current.length > 1) return
-    void window.kibu.petClicked(drag.pressedAt)
+    if (timer) void window.kibu.openBrain()
+    else void window.kibu.petClicked(drag.pressedAt)
   }
 
   function onDrop(e: React.DragEvent): void {
@@ -492,7 +503,17 @@ export function Pet(): React.JSX.Element {
   const done = task && TERMINAL.includes(task.status)
   const tone = chat && !undoNote ? 'is-chat' : !done ? (task?.status === 'awaiting_user' ? 'is-ask' : '') : task.status === 'failed' ? 'is-bad' : task.status === 'succeeded' ? 'is-good' : ''
   const canUndo = !!(done && task.summary?.undoable)
-  const text = undoNote ?? chat?.text ?? bubble
+  const alert = task?.status === 'awaiting_user' ? null : timer?.status === 'ringing' ? `Time’s up — ${timer.label}.` : due ? due.title : null
+  // Hovering the TV says what the time is for, without opening anything.
+  const peek = hovered && timer && timer.status !== 'ringing' ? `${timer.label} · ${timer.status === 'paused' ? 'paused' : `${clockText(timerRemaining(timer, now))} left`}` : null
+  const text = alertError ?? alert ?? peek ?? undoNote ?? chat?.text ?? bubble
+  async function alertAction(action: 'done' | 'snooze'): Promise<void> {
+    setAlertError(null)
+    try {
+      if (timer?.status === 'ringing') await window.kibu.brainRequest({ op: 'timer', action: 'cancel' })
+      else if (due) await window.kibu.brainRequest(action === 'done' ? { op: 'complete', id: due.id } : { op: 'snooze', id: due.id, minutes: 10 })
+    } catch (e) { setAlertError(e instanceof Error ? e.message : 'Could not update reminder.') }
+  }
 
   return (
     <div
@@ -513,13 +534,14 @@ export function Pet(): React.JSX.Element {
       onDrop={onDrop}
     >
       {text && !dropping && (
-        <div key={chat?.text ?? 'status'} className={`bubble ${tone}`} role="status" ref={bubbleRef}>
-          {working && !chat && <span className="bubble-pulse" />}
+        <div key={chat?.text ?? 'status'} className={`bubble ${alert ? 'is-reminder' : peek ? 'is-peek' : tone}`} role="status" ref={bubbleRef}>
+          {working && !chat && !peek && !alert && <span className="bubble-pulse" />}
           <span className="bubble-text">{text}</span>
-          {!undoNote && chat?.action && (
+          {alert && <span className="bubble-actions"><button onClick={() => void alertAction('done')}>Done</button>{timer?.status !== 'ringing' && <button onClick={() => void alertAction('snooze')}>10 min</button>}</span>}
+          {!alert && !undoNote && chat?.action && (
             <span className="bubble-actions"><button onClick={() => act(chat)}>{chat.action.label}</button></span>
           )}
-          {!undoNote && !chat && (canUndo || task?.status === 'awaiting_user') && (
+          {!alert && !peek && !undoNote && !chat && (canUndo || task?.status === 'awaiting_user') && (
             <span className="bubble-actions">
               {task?.status === 'awaiting_user' && <button onClick={() => void window.kibu.petCompose('')}>Answer</button>}
               {canUndo && <button onClick={() => void undo()}>Undo</button>}
@@ -529,7 +551,7 @@ export function Pet(): React.JSX.Element {
       )}
       <div className="pet-hit" ref={hitRef}>
         <div className={`pet-motion ${dancing ? 'is-dancing' : ''}`} ref={motionRef} onAnimationEnd={(e) => e.animationName === 'kb-pet-hop' && motionRef.current?.classList.remove('is-hop')}>
-          <Sprite state={state} mood={mood} look={look} size={92} />
+          <Sprite state={state} mood={mood} look={look} size={92} timer={timer ? { remainingMs: timerRemaining(timer, now), progress: timerRemaining(timer, now) / timer.durationMs, status: timer.status } : undefined} />
         </div>
       </div>
       <div className="pet-bursts" aria-hidden="true">

@@ -32,7 +32,7 @@ export interface SelfDescription {
   evidence: Evidence[]
 }
 
-export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: boolean): SelfDescription {
+export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: boolean, workspace = false): SelfDescription {
   const canSeeApps = os.supports('window.inspect')
   const canCapture = os.supports('window.capture')
 
@@ -95,6 +95,8 @@ export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: 
           '"find the invoice I saved yesterday".'
     }
   ]
+
+  if (workspace) evidence.unshift({ kind: 'text', label: 'Your workspace', value: 'Keep notes, tasks, reminders, project links, daily trackers and saved work sessions with me. I can turn into a timer, snooze reminders, and catch up when your Mac wakes or Kibu reopens. Say “note: …”, “remind me …”, “start a 25 minute timer”, or open /workspace. Notes and timers work without a model.' })
 
   if (!canPlan) {
     evidence.push({

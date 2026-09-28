@@ -493,6 +493,16 @@ func handle(_ req: Request) {
 
     do {
         switch req.op {
+        case "readDocument":
+            guard let path = str("path") else { throw HelperError(message: "path required") }
+            let value = try readDocument(path: path, startPage: max(1, intArg("startPage") ?? 1), maxPages: max(1, min(20, intArg("maxPages") ?? 8)))
+            respond(id: req.id, ok: true, value: value, error: nil)
+
+        case "prepareDocument":
+            guard let path = str("path"), let output = str("output"), let format = str("format") else { throw HelperError(message: "path, output and format required") }
+            let value = try prepareDocument(path: path, output: output, format: format, edge: max(480, min(3000, intArg("edge") ?? 1600)), maxBytes: max(0, intArg("maxBytes") ?? 0))
+            respond(id: req.id, ok: true, value: value, error: nil)
+
         case "ping":
             respond(id: req.id, ok: true, value: ["pong": true, "version": 1], error: nil)
 

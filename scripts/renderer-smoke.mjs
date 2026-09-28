@@ -21,7 +21,27 @@ await page.addInitScript(() => {
   ] }
   window.__test = { state, emit: (event, payload) => (listeners[event] || []).forEach((f) => f(payload)) }
   const sub = (event) => (cb) => { (listeners[event] ||= []).push(cb); return () => { listeners[event] = listeners[event].filter((f) => f !== cb) } }
+  state.brain = { items: [], timer: null }
   window.kibu = {
+    getBrain: async () => state.brain,
+    onBrainChanged: sub('brain'), onBrainOpen: sub('brain-open'), openBrain: async () => window.__test.emit('brain-open'),
+    onPetPlay: sub('play'), onCursor: sub('cursor'), showPetMenu: async () => {},
+    brainRequest: async (req) => {
+      state.calls.push(['brain', req])
+      if (req.op === 'create') state.brain.items.unshift({ id: `brain-${state.brain.items.length}`, status: 'open', body: '', projectId: null, dueAt: null, repeat: 'none', estimateMinutes: null, sources: [], checks: [], createdAt: Date.now(), updatedAt: Date.now(), notifiedAt: null, acknowledgedAt: null, ...req.item })
+      if (req.op === 'update') Object.assign(state.brain.items.find(i => i.id === req.id), req.changes)
+      if (req.op === 'complete') state.brain.items.find(i => i.id === req.id).status = 'done'
+      if (req.op === 'archive') state.brain.items.find(i => i.id === req.id).status = 'archived'
+      if (req.op === 'reopen') state.brain.items.find(i => i.id === req.id).status = 'open'
+      if (req.op === 'snooze') state.brain.items.find(i => i.id === req.id).dueAt = Date.now() + req.minutes * 60000
+      if (req.op === 'timer') {
+        if (req.action === 'start') state.brain.timer = { id: 'timer', label: req.label ?? 'Focus time', status: 'running', endsAt: Date.now() + req.minutes * 60000, durationMs: req.minutes * 60000, remainingMs: req.minutes * 60000, notifiedAt: null }
+        else if (req.action === 'cancel') state.brain.timer = null
+        else state.brain.timer.status = req.action === 'pause' ? 'paused' : 'running'
+      }
+      window.__test.emit('brain', structuredClone(state.brain))
+      return state.brain
+    },
     canWork: async () => state.ready, getPermissions: async () => [{ permission: 'accessibility', granted: false, purpose: 'Control native Mac apps when you ask.' }], listHistory: async () => state.history,
     getFrontWindow: async () => ({ pid: 123, name: 'Finder', title: 'Downloads' }),
     getPanelState: async () => state.panel,
@@ -52,7 +72,7 @@ const task = {
 try {
   await page.goto(`${server.resolvedUrls.local[0]}#panel`)
   await page.getByRole('button', { name: 'Find', exact: true }).waitFor()
-  assert.ok((await page.locator('body').innerText()).split(/\s+/).length < 12, 'Idle UI should have very little text')
+  assert.ok((await page.locator('body').innerText()).split(/\s+/).length < 35, 'Idle UI should stay concise')
   assert.equal(await page.evaluate(() => { const main = document.querySelector('.workspace'); return main.scrollHeight > main.clientHeight }), false, 'The ready home should fit without scrolling')
   await page.screenshot({ path: `${artifacts}/home.png` })
   await page.getByRole('button', { name: 'Organize', exact: true }).click()
@@ -177,7 +197,61 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   assert.equal(await page.getByRole('button', { name: 'Send task', exact: true }).isVisible(), true)
   await page.screenshot({ path: `${artifacts}/compact.png` })
+  await page.setViewportSize({ width: 620, height: 700 })
+  await page.getByRole('button', { name: 'Workspace', exact: true }).click()
+  await page.getByRole('button', { name: 'New', exact: true }).click()
+  await page.getByLabel('Item title', { exact: true }).fill('Acme launch notes')
+  await page.getByLabel('Item details', { exact: true }).fill('Use the monochrome logo. Next: revise the mobile header.')
+  await page.getByLabel('Source link', { exact: true }).fill('https://example.com/brief')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: 'Acme launch notes', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
+  await page.getByLabel('Item title', { exact: true }).fill('Acme revised notes')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.getByRole('button', { name: 'Acme revised notes', exact: true }).waitFor()
+  await page.getByLabel('Search workspace').fill('mobile header')
+  assert.equal(await page.locator('.brain-card').count(), 1)
+  await page.getByLabel('Search workspace').fill('')
+  await page.getByRole('button', { name: 'Start', exact: true }).click()
+  await page.getByRole('button', { name: 'Pause', exact: true }).click()
+  await page.getByRole('button', { name: 'Resume', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Resume', exact: true }).click()
+  await page.screenshot({ path: `${artifacts}/workspace.png` })
+  await page.locator('.brain-actions').getByRole('button', { name: 'Archive', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Workspace sections' }).getByRole('button', { name: 'Archive', exact: true }).click()
+  await page.getByRole('button', { name: 'Restore', exact: true }).click()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: 'Acme revised notes', exact: true }).waitFor()
+  await page.setViewportSize({ width: 420, height: 600 })
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+  await page.screenshot({ path: `${artifacts}/workspace-compact.png` })
+  await page.setViewportSize({ width: 260, height: 190 })
+  await page.goto(`${server.resolvedUrls.local[0]}?pet-test=1#pet`)
+  await page.locator('.pet-root').waitFor()
+  await page.evaluate(() => {
+    window.__test.state.brain.timer = { id: 'timer', label: 'Focus time', status: 'running', durationMs: 1500000, remainingMs: 1500000, endsAt: Date.now() + 1500000, notifiedAt: null }
+    window.__test.emit('brain', structuredClone(window.__test.state.brain))
+  })
+  await page.locator('.kb-sprite.is-timer').waitFor()
+  await page.screenshot({ path: `${artifacts}/pet-timer.png` })
+  await page.evaluate(() => {
+    window.__test.state.brain.timer.status = 'ringing'
+    window.__test.state.brain.timer.endsAt = Date.now() - 1000
+    window.__test.emit('brain', structuredClone(window.__test.state.brain))
+  })
+  await page.getByText('Time’s up — Focus time.').waitFor()
+  await page.screenshot({ path: `${artifacts}/pet-timer-due.png` })
+  await page.getByRole('button', { name: 'Done', exact: true }).click()
+  await page.waitForFunction(() => !document.querySelector('.kb-sprite.is-timer'))
+  await page.evaluate(() => {
+    window.__test.state.brain.items = [{ id: 'reminder', kind: 'reminder', title: 'Send the client proposal', body: '', status: 'open', dueAt: Date.now() - 1000, acknowledgedAt: null, sources: [], checks: [] }]
+    window.__test.emit('brain', structuredClone(window.__test.state.brain))
+  })
+  await page.getByText('Send the client proposal').waitFor()
+  await page.getByRole('button', { name: '10 min', exact: true }).click()
+  await page.waitForFunction(() => window.__test.state.brain.items[0].dueAt > Date.now())
   assert.deepEqual(errors, [], 'No renderer exceptions')
-  console.log('Renderer checks passed: minimal home, memory list and forgetting, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the island and back, drag to move, compact layout.')
+  console.log('Renderer checks passed: minimal home, memory list and forgetting, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the island and back, drag to move, compact layout, workspace editing/search/archive, timer controls and pet transformation, and reminder snoozing.')
   console.log(`Screenshots: ${artifacts}`)
 } finally { await browser.close(); await server.close() }

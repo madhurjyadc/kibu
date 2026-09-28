@@ -78,6 +78,7 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
         </li>)}</ul></div>
         <MemorySection settings={settings} update={update} onError={setError} />
         <details className="setting-section"><summary>Preferences</summary>
+          <label className="habit"><span>Open Kibu at login for reminders</span><input type="checkbox" checked={settings.launchAtLogin ?? false} onChange={(e) => void update({ launchAtLogin: e.target.checked })} /></label>
           <label className="habit"><span>Fast file workflows</span><input type="checkbox" checked={settings.workflowsFirst} onChange={(e) => void update({ workflowsFirst: e.target.checked })} /></label>
           <label className="habit"><span>Jev decisions</span><input type="checkbox" checked={settings.jevEnabled} onChange={(e) => void update({ jevEnabled: e.target.checked })} /></label>
           <label className="habit"><span>Little chats from Kibu</span><input type="checkbox" checked={settings.chatty} onChange={(e) => void update({ chatty: e.target.checked })} /></label>

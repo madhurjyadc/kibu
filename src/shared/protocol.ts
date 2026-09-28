@@ -6,6 +6,7 @@
  * The renderer is unprivileged: it can only send the commands named here, and
  * every one is validated in the main process before anything privileged runs.
  */
+import type { BrainRequest, BrainSnapshot } from './brain.js'
 import type {
   Authorization,
   Evidence,
@@ -45,6 +46,11 @@ export interface AnswerQuestionRequest {
 /** Channel names. Kept as consts so the preload and main cannot drift. */
 export const IPC = {
   // invoke
+  brainGet: 'brain:get',
+  brainRequest: 'brain:request',
+  brainOpen: 'brain:open',
+  onBrain: 'brain:changed',
+  onBrainOpen: 'brain:show',
   taskStart: 'task:start',
   taskPause: 'task:pause',
   taskResume: 'task:resume',
@@ -241,6 +247,11 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
  * ------------------------------------------------------------------ */
 
 export interface KibuBridge {
+  getBrain(): Promise<BrainSnapshot>
+  brainRequest(request: BrainRequest): Promise<BrainSnapshot>
+  openBrain(): Promise<void>
+  onBrainChanged(cb: (state: BrainSnapshot) => void): () => void
+  onBrainOpen(cb: () => void): () => void
   startTask(req: StartTaskRequest): Promise<TaskState>
   pauseTask(taskId: string): Promise<void>
   resumeTask(taskId: string): Promise<void>
@@ -338,6 +349,7 @@ export interface PanelState {
 }
 
 export interface Settings {
+  launchAtLogin: boolean
   /** Global shortcut accelerator, Electron syntax. */
   shortcut: string
   /** Per-task spend ceiling in USD. */
@@ -375,6 +387,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  launchAtLogin: false,
   shortcut: 'CommandOrControl+Shift+K',
   maxUsdPerTask: 1.5,
   jevEnabled: true,

@@ -62,7 +62,8 @@ test('the example sentence becomes the two steps it describes', async () => {
   const plan = await buildPlan(
     'create a new folder named automaton inside the dev folder and open it in zed editor',
     [],
-    ctx
+    ctx,
+    { folder: async () => join(homedir(), 'dev'), app: async () => 'Zed' }
   )
   assert.equal(plan.steps.length, 2, JSON.stringify(plan))
   const [mkdir, open] = plan.steps
