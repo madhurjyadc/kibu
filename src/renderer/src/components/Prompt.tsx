@@ -5,6 +5,7 @@ import { Icon } from './Icon.js'
 
 /** Everything Kibu can be told to do that isn't a task. */
 export const COMMANDS = [
+  { name: 'new', hint: 'Start a new chat' },
   { name: 'workspace', hint: 'Notes, reminders, projects and timers' },
   { name: 'undo', hint: 'Undo file changes' },
   { name: 'steps', hint: 'Task details' },
@@ -21,6 +22,8 @@ export type CommandName = (typeof COMMANDS)[number]['name']
 
 interface Props {
   state: PetState
+  /** The launcher in the bar starts chats; the reply box under a chat continues it. */
+  variant?: 'launcher' | 'reply'
   placeholder: string
   /** A task is running: plain requests wait, commands still go through. */
   busy: boolean
@@ -41,6 +44,7 @@ interface Props {
 
 /** A persistent composer: preserve drafts on failure and support answers as well as new tasks. */
 export function Prompt({
+  variant = 'launcher',
   placeholder,
   busy,
   canAnswer = false,
@@ -55,6 +59,7 @@ export function Prompt({
   onEscape,
   onDraft
 }: Props): React.JSX.Element {
+  const reply = variant === 'reply'
   const [text, setText] = useState('')
   const [pick, setPick] = useState(0)
   const [submitting, setSubmitting] = useState(false)
@@ -147,11 +152,11 @@ export function Prompt({
 
   return (
     <>
-      <div className={`prompt ${busy ? 'busy' : ''}`}>
-        <button className="icon-button attach-button" aria-label="Attach files" title="Attach files" onClick={() => void onAttach()}><Icon name="plus" size={19} /></button>
+      <div className={`prompt is-${variant} ${busy ? 'busy' : ''}`}>
+        <button className="icon-button attach-button" aria-label="Attach files" title="Attach files" onClick={() => void onAttach()}><Icon name="attach" size={reply ? 16 : 18} /></button>
         <textarea
           id="composer"
-          aria-label={canAnswer ? "Answer Kibu" : "Ask Kibu for help"}
+          aria-label={canAnswer ? 'Answer Kibu' : reply ? 'Reply to Kibu' : 'Ask Kibu for help'}
           disabled={submitting}
           maxLength={4000}
           ref={ref}
@@ -176,11 +181,11 @@ export function Prompt({
         )}
         <button
           className="send-button"
-          aria-label={canAnswer ? 'Send answer' : 'Send task'}
+          aria-label={canAnswer ? 'Send answer' : reply ? 'Send reply' : 'Send task'}
           disabled={!text.trim() || submitting || (busy && !canAnswer && !slash)}
           onClick={() => void run(withFront && !!front && !canAnswer)}
         >
-          <Icon name="arrow" size={19} />
+          <Icon name={reply ? 'up' : 'arrow'} size={reply ? 16 : 19} />
         </button>
       </div>
 

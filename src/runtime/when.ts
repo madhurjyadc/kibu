@@ -140,6 +140,22 @@ export function readTime(text: string, now = new Date()): TimeReading | null {
   return { candidates, dateOnly: !hours, matched, durationMin }
 }
 
+const NUMBER_WORDS: Record<string, number> = {
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  eleven: 11, twelve: 12, fifteen: 15, twenty: 20, 'twenty-five': 25, thirty: 30, forty: 40, 'forty-five': 45,
+  fifty: 50, sixty: 60, ninety: 90
+}
+const SPELLED = new RegExp(`\\b(${Object.keys(NUMBER_WORDS).join('|')})(?=[ -](?:seconds?|secs?|minutes?|mins?|hours?|hrs?)\\b)`, 'gi')
+
+/**
+ * Spelled-out durations as digits: "one minute" → "1 minute", "an hour" →
+ * "1 hour", "half an hour" → "30 minutes". Only a number directly in front
+ * of a unit is touched, so "someone" and "a timer" stay as they are.
+ */
+export function spelledDurations(text: string): string {
+  return text.replace(/\bhalf an? hour\b/gi, '30 minutes').replace(SPELLED, (w) => String(NUMBER_WORDS[w.toLowerCase()]))
+}
+
 /** Removes the time phrases (and the glue words around them) from a title. */
 export function stripTime(text: string, reading: TimeReading | null): string {
   let out = ` ${text} `

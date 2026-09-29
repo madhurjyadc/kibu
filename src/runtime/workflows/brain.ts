@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { readTime, stripTime } from '../when.js'
+import { readTime, spelledDurations, stripTime } from '../when.js'
 import { reminderTitle } from './assist.js'
 import type { ScreenContext } from '../tools/mac.js'
 import type { BrainDraft, BrainRequest, BrainSnapshot, BrainSource } from '../../shared/brain.js'
@@ -8,7 +8,7 @@ import type { WorkflowContext, WorkflowResult } from './types.js'
 const external = /\b(?:apple (?:notes|reminders)|(?:in|to|using) (?:the )?(?:notes|reminders) app|calendar)\b/i
 export function isBrainRequest(text: string): boolean {
   if (external.test(text)) return false
-  return /^(?:(?:hey kibu|kibu|please)[, ]+)*(?:(?:start|set|pause|resume|cancel|stop) (?:a |an |the |my )?(?:\d+(?:\.\d+)?[ -](?:minute|second|hour)s?[ -])?(?:focus )?timer\b|(?:focus|time me) for\b|remind me\b|remember to\b|(?:set|add) a reminder\b|save where I am\b|resume (?:my )?(?:project|session)\b|note:|(?:make|take|create|save|add) (?:a )?note\b|(?:save|keep) (?:this|that|these)\b|(?:add|create) (?:a )?(?:task|project|tracker)\b|track .+ daily$|(?:show|list|what(?:'s| is| are)) (?:in )?(?:my |kibu(?:'s)? )?(?:workspace|notes|tasks|reminders|projects|trackers)\b)/i.test(text.trim())
+  return /^(?:(?:hey kibu|kibu|please)[, ]+)*(?:(?:start|set|pause|resume|cancel|stop) (?:a |an |the |my )?(?:\d+(?:\.\d+)?[ -](?:minute|second|hour)s?[ -])?(?:focus )?timer\b|(?:focus|time me) for\b|remind me\b|remember to\b|(?:set|add) a reminder\b|save where I am\b|resume (?:my )?(?:project|session)\b|note:|(?:make|take|create|save|add) (?:a )?note\b|(?:save|keep) (?:this|that|these)\b|(?:add|create) (?:a )?(?:task|project|tracker)\b|track .+ daily$|(?:show|list|what(?:'s| is| are)) (?:in )?(?:my |kibu(?:'s)? )?(?:workspace|notes|tasks|reminders|projects|trackers)\b)/i.test(spelledDurations(text.trim()))
 }
 
 /** Narrow, local commands stay useful without a model connection. Novel combinations hand off. */
@@ -59,7 +59,8 @@ export async function runBrainWorkflow(request: string, dropped: string[], ctx: 
     return { success: true, headline: `Timer ${control[1]!.toLowerCase() === 'pause' ? 'paused' : control[1]!.toLowerCase() === 'resume' ? 'resumed' : 'cancelled'}.`, evidence: [] }
   }
   if (/\btimer\b|^(?:focus|time me) for\b/i.test(text)) {
-    const duration = /(\d+(?:\.\d+)?)\s*[- ]?\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b/i.exec(text)
+    // "a timer of one minute" is as clear as "a 1 minute timer".
+    const duration = /(\d+(?:\.\d+)?)\s*[- ]?\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b/i.exec(spelledDurations(text))
     if (!duration) return null
     const minutes = Number(duration[1]) * (/^s/i.test(duration[2]!) ? 1 / 60 : /^h/i.test(duration[2]!) ? 60 : 1)
     const label = /(?:called|named)\s+(.+)$/i.exec(text)?.[1] ?? 'Focus time'

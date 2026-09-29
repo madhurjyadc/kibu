@@ -19,22 +19,22 @@ export function Past({ rows, onOpen, onUndo, onDelete }: {
     catch (e) { setNote(e instanceof Error ? e.message : 'Couldn’t delete task.') }
     finally { setBusy(false) }
   }
-  if (!rows.length) return <p className="pane-empty">No saved tasks.</p>
+  if (!rows.length) return <p className="pane-empty">No saved chats.</p>
   return <div className="history-list">
     {note && <p className="notice" role="status">{note}</p>}
     <ul className="past">{rows.map((r) => <li key={r.id}>
       <div className="history-row">
         <span className={`history-dot ${r.status}`} title={r.status} />
-        <button className="past-main" onClick={() => void onOpen(r.id)}><span className="past-req">{r.request}</span><time>{relative(r.createdAt)}</time></button>
+        <button className="past-main" onClick={() => void onOpen(r.id)}><span className="past-req">{r.request}</span>{r.turns > 1 && <span className="past-turns" title={`${r.turns} messages`}>{r.turns}</span>}<time>{relative(r.createdAt)}</time></button>
         {r.undoable && <button className="past-undo" disabled={busy} onClick={async () => {
           setBusy(true)
           try { const report = await onUndo(r.id); setNote(`${report.reversed} restored${report.skipped.length ? ` · ${report.skipped.length} skipped` : ''}`) }
           catch (e) { setNote(e instanceof Error ? e.message : 'Undo failed.') }
           finally { setBusy(false) }
         }}>Undo</button>}
-        <button className="icon-button" disabled={busy || !isTerminal(r.status)} aria-label={`Delete ${r.request}`} title={isTerminal(r.status) ? 'Delete task' : 'Stop task before deleting'} onClick={() => setDeleting(deleting === r.id ? null : r.id)}><Icon name="trash" size={15} /></button>
+        <button className="icon-button" disabled={busy || !isTerminal(r.status)} aria-label={`Delete ${r.request}`} title={isTerminal(r.status) ? 'Delete chat' : 'Stop the task before deleting'} onClick={() => setDeleting(deleting === r.id ? null : r.id)}><Icon name="trash" size={15} /></button>
       </div>
-      {deleting === r.id && <div className="delete-confirm"><span>Delete task and undo history? Files stay.</span><button className="danger-button" disabled={busy} onClick={() => void remove(r.id)}>Delete</button><button className="icon-button" aria-label="Cancel deletion" disabled={busy} onClick={() => setDeleting(null)}><Icon name="close" size={15} /></button></div>}
+      {deleting === r.id && <div className="delete-confirm"><span>{r.turns > 1 ? `Delete this chat (${r.turns} messages) and its undo history?` : 'Delete this chat and its undo history?'} Files stay.</span><button className="danger-button" disabled={busy} onClick={() => void remove(r.id)}>Delete</button><button className="icon-button" aria-label="Cancel deletion" disabled={busy} onClick={() => setDeleting(null)}><Icon name="close" size={15} /></button></div>}
     </li>)}</ul>
   </div>
 }

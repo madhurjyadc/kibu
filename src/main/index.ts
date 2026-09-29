@@ -41,6 +41,7 @@ import type {
 import { isTerminal, defaultLimits, emptyAuthorization, type PetState, type TaskState } from '../shared/types.js'
 import { normalizePath } from '../runtime/authorization.js'
 import { claudeCodeAvailable } from '../runtime/model/claude-code-planner.js'
+import { codingAppAvailable, codingAppStatus } from '../runtime/model/coding-apps.js'
 
 const isDev = !app.isPackaged
 const RENDERER_URL = process.env.ELECTRON_RENDERER_URL ?? null
@@ -197,7 +198,7 @@ function newTask(req: StartTaskRequest): TaskState {
 
 /** Whether any planning route at all is configured. */
 function canWork(): boolean {
-  return secrets.hasApiKey() || secrets.hasJevKey() || (settings.useClaudeCode && claudeCodeAvailable())
+  return secrets.hasApiKey() || secrets.hasJevKey() || (settings.useClaudeCode && codingAppAvailable(settings.codingApp))
 }
 
 /**
@@ -206,9 +207,32 @@ function canWork(): boolean {
  * that tomorrow's request is not coloured by yesterday's.
  */
 const FOLLOW_UP_WINDOW_MS = 10 * 60 * 1000
+/** How many turns before the one replied to are given to the model as well. */
+const EARLIER_TURNS = 5
 let lastFinished: { id: string; request: string; headline: string; at: number } | null = null
 
-function previousTurn(): PreviousTurn | null {
+/**
+ * What this message follows. A reply names its turn, so it is context however
+ * long ago that was; a new chat has none; anything else falls back to the
+ * follow-up window.
+ */
+function previousTurn(followUp: string | null | undefined): PreviousTurn | null {
+  if (followUp === null) return null
+  if (followUp) {
+    const thread = store.conversationOf(followUp)
+    const at = thread.findIndex((t) => t.id === followUp)
+    const prior = thread[at]
+    if (!prior) return null
+    const said = (t: TaskState): string => t.summary?.headline ?? t.error ?? t.statusLine
+    return {
+      request: prior.request,
+      headline: said(prior),
+      secondsAgo: Math.max(0, Math.round((Date.now() - prior.updatedAt) / 1000)),
+      explicit: true,
+      // The rest of the chat up to that turn, so a reply has the whole thread.
+      earlier: thread.slice(Math.max(0, at - EARLIER_TURNS), at).map((t) => ({ request: t.request, headline: said(t) }))
+    }
+  }
   if (!lastFinished) return null
   const elapsed = Date.now() - lastFinished.at
   if (elapsed > FOLLOW_UP_WINDOW_MS) return null
@@ -223,10 +247,15 @@ function startTask(req: StartTaskRequest): TaskState {
   // A missing Anthropic key is no longer fatal: the Jev-only workflows can
   // still run, Claude Code can stand in for the planner, and the runtime
   // reports clearly if a request needs something that is not configured.
-  const planViaClaudeCode = settings.useClaudeCode && claudeCodeAvailable()
+  const planViaClaudeCode = settings.useClaudeCode && codingAppAvailable(settings.codingApp)
   if (currentTask && !isTerminal(currentTask.status)) throw new Error('A task is already running.')
 
   const task = newTask(req)
+  const previous = previousTurn(req.followUp)
+  if (req.followUp && previous) {
+    task.replyTo = req.followUp
+    task.conversationId = store.getTask(req.followUp)?.conversationId ?? req.followUp
+  }
   ;(task as TaskState & { droppedPaths?: string[] }).droppedPaths = (req.droppedPaths ?? []).map(normalizePath)
   currentTask = task
   store.saveTask(task)
@@ -236,7 +265,7 @@ function startTask(req: StartTaskRequest): TaskState {
     task,
     apiKey: secrets.getApiKey(),
     jevApiKey: secrets.getJevKey(),
-    model: { ...DEFAULT_MODEL_CONFIG, claudeCode: settings.claudeCodeModel },
+    model: { ...DEFAULT_MODEL_CONFIG, claudeCode: settings.claudeCodeModel, codex: settings.codexModel, opencode: settings.opencodeModel },
     frontWindow: req.includeFrontWindow ? lastFrontWindow : null,
     previousApp: lastFrontWindow?.name ?? null,
     memories: settings.memoryEnabled ? store.listMemories() : [],
@@ -244,7 +273,8 @@ function startTask(req: StartTaskRequest): TaskState {
     confirmEveryAction: settings.confirmEveryAction,
     workflowsEnabled: settings.workflowsFirst,
     useClaudeCode: planViaClaudeCode,
-    previousTurn: previousTurn()
+    codingApp: settings.codingApp,
+    previousTurn: previous
   })
   if (!sent) {
     task.status = 'failed'
@@ -438,6 +468,33 @@ function recenterPanel(): void {
   saveSettings({ panelX: -1, panelY: -1 })
 }
 
+/** Set while a native dialog owned by the panel is open. */
+let panelDialogOpen = false
+let blurTimer: NodeJS.Timeout | null = null
+
+/**
+ * Clicking somewhere else puts the panel away, the way Spotlight does.
+ *
+ * Left open behind other apps, the panel was covered on the first click
+ * elsewhere and then turned up again on the next window or Space switch,
+ * which read as a window popping up on its own. Now it goes, and comes back
+ * only when asked for. "Keep in front" means stay, so a pinned panel is left
+ * alone; and a running task shrinks to the island instead, so its progress
+ * stays in view without the panel in the way.
+ */
+function putAwayAfterBlur(): void {
+  blurTimer = null
+  if (!panelWindow || panelWindow.isDestroyed() || !panelWindow.isVisible()) return
+  if (panelWindow.isFocused() || isPanelPinned() || isPanelDocked() || isPanelAnimating() || panelDialogOpen || quitting) return
+  if (currentTask && !isTerminal(currentTask.status)) {
+    togglePanelDock(panelWindow)
+    broadcastPanelState()
+    return
+  }
+  hidePanel()
+  setPetState('idle')
+}
+
 /** Puts the panel away. A hidden panel is never a docked one. */
 function hidePanel(): void {
   if (!panelWindow || panelWindow.isDestroyed()) return
@@ -556,7 +613,8 @@ function registerIpc(): void {
     const droppedPaths = Array.isArray(req.droppedPaths)
       ? req.droppedPaths.filter((p): p is string => typeof p === 'string').slice(0, 200)
       : []
-    return startTask({ request: req.request.slice(0, 4000), droppedPaths, includeFrontWindow: !!req.includeFrontWindow })
+    const followUp = typeof req.followUp === 'string' ? req.followUp : req.followUp === null ? null : undefined
+    return startTask({ request: req.request.slice(0, 4000), droppedPaths, includeFrontWindow: !!req.includeFrontWindow, followUp })
   })
 
   ipcMain.handle(IPC.taskPause, (_e, taskId: string) => {
@@ -598,13 +656,20 @@ function registerIpc(): void {
   ipcMain.handle(IPC.historyDelete, (_e, id: unknown) => {
     if (typeof id !== 'string' || !id.trim()) throw new Error('A task ID is required.')
     if (currentTask?.id === id && !isTerminal(currentTask.status)) throw new Error('Stop this task before deleting it.')
-    store.deleteTask(id)
-    forget([id])
+    // A History row is a chat, so deleting it deletes every turn of it.
+    forget(store.deleteConversation(id))
   })
   ipcMain.handle(IPC.historyClear, () => { forget(store.clearHistory()) })
   ipcMain.handle(IPC.choosePaths, async () => {
-    const result = await dialog.showOpenDialog(panelWindow!, { properties: ['openFile', 'openDirectory', 'multiSelections'], buttonLabel: 'Attach' })
-    return result.canceled ? [] : result.filePaths
+    // The picker takes focus from the panel; that is not the user leaving.
+    panelDialogOpen = true
+    try {
+      const result = await dialog.showOpenDialog(panelWindow!, { properties: ['openFile', 'openDirectory', 'multiSelections'], buttonLabel: 'Attach' })
+      return result.canceled ? [] : result.filePaths
+    } finally {
+      panelDialogOpen = false
+      panelWindow?.focus()
+    }
   })
 
 
@@ -628,6 +693,7 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.secretsStatusJev, () => secrets.hasJevKey())
   ipcMain.handle(IPC.claudeCodeStatus, () => claudeCodeAvailable())
+  ipcMain.handle(IPC.codingAppsStatus, () => codingAppStatus())
   // The same condition startTask enforces, so the interface can never nag for
   // a key that is not actually needed.
   ipcMain.handle(IPC.canWork, () => canWork())
@@ -662,6 +728,13 @@ function registerIpc(): void {
       if (typeof next.launchAtLogin !== 'boolean') throw new Error('Invalid login preference.')
       if (!app.isPackaged) throw new Error('Open at login is available in an installed Kibu build. During development, keep Kibu running for reminders.')
       app.setLoginItemSettings({ openAtLogin: next.launchAtLogin })
+    }
+    if (next.codingApp !== undefined && !['claude-code', 'codex', 'opencode'].includes(next.codingApp)) throw new Error('Unknown coding app.')
+    // A model name ends up as a command-line argument: it may only look like one.
+    for (const key of ['codexModel', 'opencodeModel'] as const) {
+      const value = next[key]
+      if (value !== undefined && (typeof value !== 'string' || !/^(?!-)[A-Za-z0-9._/:@-]{0,100}$/.test(value.trim()))) throw new Error('That does not look like a model name.')
+      if (typeof value === 'string') next[key] = value.trim()
     }
     const before = settings.shortcut
     const updated = saveSettings(next ?? {})
@@ -907,7 +980,13 @@ if (!singleInstance) {
       { x: settings.panelX, y: settings.panelY, pinned: settings.panelPinned }
     )
     panelWindow.on('focus', () => notePanelFocus(true))
-    panelWindow.on('blur', () => notePanelFocus(false))
+    panelWindow.on('blur', () => {
+      notePanelFocus(false)
+      if (blurTimer) clearTimeout(blurTimer)
+      // A short grace: focus can flicker away and straight back during a
+      // click on the pet or while macOS hands activation around.
+      blurTimer = setTimeout(putAwayAfterBlur, 150)
+    })
     panelWindow.on('hide', () => notePanelFocus(false))
     panelWindow.on('moved', () => {
       // Only a panel the user dragged is worth remembering; the docked handle
@@ -928,7 +1007,8 @@ if (!singleInstance) {
       console.warn(`Could not register the global shortcut ${settings.shortcut}; it may be taken.`)
     }
 
-    app.on('activate', () => togglePanel(true))
+    // Reopening the app means "show me", never "put it away".
+    app.on('activate', () => togglePanelShow())
   })
 
   // Kibu lives in the menu bar, so closing its windows must not quit it.

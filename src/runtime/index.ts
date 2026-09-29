@@ -21,7 +21,8 @@ import { macTools } from './tools/mac.js'
 import { rememberTool } from './tools/memory.js'
 import { yourBrowserTools } from './tools/your-browser.js'
 import { TaskRunner } from './loop/task-runner.js'
-import { ClaudeCodePlanner } from './model/claude-code-planner.js'
+import { disposeWarmClaudeCode, prewarmClaudeCode, quickModel } from './model/claude-code-planner.js'
+import { createCodingAppPlanner } from './model/coding-apps.js'
 import { runBench } from './bench.js'
 import { createOsAdapter } from '../os/index.js'
 import type { HostToRuntime, LogEntry, RuntimeToHost } from '../shared/protocol.js'
@@ -75,6 +76,10 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
     return
   }
   const droppedPaths = (msg.task as TaskState & { droppedPaths?: string[] }).droppedPaths ?? []
+  // Answers run on the quick model, jobs on the full one. Both CLIs start up
+  // now, while the request is being read, instead of after.
+  const claudeCode = msg.useClaudeCode && msg.codingApp === 'claude-code'
+  if (claudeCode) prewarmClaudeCode(quickModel(msg.model.claudeCode), msg.model.claudeCode)
   runner = new TaskRunner(
     msg.task,
     {
@@ -88,8 +93,8 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
       jevApiKey: msg.jevApiKey,
       workflowsEnabled: msg.workflowsEnabled,
       ...(msg.useClaudeCode
-        ? { createPlanner: (): ClaudeCodePlanner => new ClaudeCodePlanner({ model: msg.model.claudeCode }) }
-        : {}),
+        ? { createPlanner: () => createCodingAppPlanner(msg.codingApp, msg.model), plannerRoute: msg.codingApp }
+        : msg.apiKey ? { plannerRoute: 'api' as const } : {}),
       frontWindow: msg.frontWindow,
       previousApp: msg.previousApp ?? null,
       prefetchContext: true,
@@ -109,6 +114,8 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
   )
   const finished = await runner.run()
   send({ type: 'task-update', task: finished })
+  // Ready for the next message before it is typed.
+  if (claudeCode) prewarmClaudeCode(quickModel(msg.model.claudeCode), msg.model.claudeCode)
 }
 
 process.on('message', (raw: HostToRuntime) => {
@@ -150,8 +157,12 @@ process.on('message', (raw: HostToRuntime) => {
   }
 })
 
+// A waiting CLI process must not outlive the runtime that started it.
+process.on('exit', disposeWarmClaudeCode)
+
 async function shutdown(): Promise<void> {
   runner?.cancel()
+  disposeWarmClaudeCode()
   await browser.close().catch(() => {})
   await os.dispose().catch(() => {})
   process.exit(0)

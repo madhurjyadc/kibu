@@ -7,7 +7,7 @@ import { mkdtempSync } from 'node:fs'
 
 import { ToolRegistry, type ToolContext } from '../src/runtime/tools/registry.js'
 import { fileTools, filesMove, filesCreateFolder, filesList, filesSearch } from '../src/runtime/tools/files.js'
-import { checkScopes, isForbidden, isWithin, normalizePath, extendAuthorization, grantFor } from '../src/runtime/authorization.js'
+import { checkScopes, isForbidden, isWithin, normalizePath, extendAuthorization, grantFor, describeMissing } from '../src/runtime/authorization.js'
 import { emptyAuthorization, defaultLimits, type TaskState } from '../src/shared/types.js'
 
 let root: string
@@ -116,6 +116,20 @@ describe('authorization', () => {
     const auth = { ...emptyAuthorization(), origins: ['https://example.com'] }
     assert.equal(checkScopes(auth, [{ kind: 'origin', url: 'https://example.com/a/b?c=1' }]).allowed, true)
     assert.equal(checkScopes(auth, [{ kind: 'origin', url: 'https://evil.com/' }]).allowed, false)
+  })
+
+  test('one yes covers the folder, not just the one file', () => {
+    // Tidying a Desktop used to ask once per screenshot.
+    const first = checkScopes(emptyAuthorization(), [{ kind: 'write', path: join(root, 'photo.png') }])
+    const auth = extendAuthorization(emptyAuthorization(), grantFor(first.missing))
+    assert.equal(checkScopes(auth, [{ kind: 'write', path: join(root, 'report.pdf') }]).allowed, true)
+    assert.equal(checkScopes(auth, [{ kind: 'write', path: join(root, 'New Folder') }]).allowed, true)
+    assert.match(describeMissing(first.missing), /change files in/)
+  })
+
+  test('a file directly in the home folder never widens to the whole home folder', () => {
+    const grant = grantFor([{ kind: 'write', path: '~/stray-note.txt' }])
+    assert.deepEqual(grant.writeRoots, [normalizePath('~/stray-note.txt')])
   })
 
   test('granting the missing scopes makes the same check pass', () => {

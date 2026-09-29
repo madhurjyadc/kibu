@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 
-export type IconName = 'expand' | 'copy' | 'list' | 'chevron' | 'spark' | 'folder' | 'search' | 'rename' | 'clock' | 'settings' | 'arrow' | 'close' | 'plus' | 'screen' | 'check' | 'help' | 'trash' | 'attach' | 'back' | 'pin' | 'minimize'
+export type IconName = 'expand' | 'copy' | 'list' | 'chevron' | 'spark' | 'folder' | 'search' | 'rename' | 'clock' | 'settings' | 'arrow' | 'close' | 'plus' | 'screen' | 'check' | 'help' | 'trash' | 'attach' | 'back' | 'pin' | 'minimize' | 'up' | 'compose' | 'archive'
 const paths: Record<IconName, string> = {
   copy: 'M9 9h10v11H9V9Zm-4 6V4h10',
   list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
@@ -18,6 +18,9 @@ const paths: Record<IconName, string> = {
   clock: 'M4 12a8 8 0 1 0 2.3-5.6L4 8.6M4 4v4.6h4.6M12 8v4.2l2.8 1.8',
   settings: 'M4 8h9M17 8h3M4 16h3M11 16h9M15 5.5v5M9 13.5v5',
   arrow: 'M5 12h14m-6-6 6 6-6 6',
+  up: 'M12 19V5m-6 6 6-6 6 6',
+  compose: 'M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M18.5 3.5l2 2L13 13l-3 1 1-3 7.5-7.5Z',
+  archive: 'M4 5h16v4H4V5Zm1 4v10h14V9M10 13h4',
   close: 'M7 7l10 10M17 7 7 17',
   plus: 'M12 5v14M5 12h14',
   screen: 'M3 4h18v13H3V4Zm5 17h8m-4-4v4',

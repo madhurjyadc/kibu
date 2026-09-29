@@ -68,14 +68,22 @@ export class Store {
         memory_json TEXT NOT NULL
       );
     `)
+    // Chats: every turn names the chat it belongs to. Rows from before this
+    // column existed are each a chat of their own.
+    const columns = this.db.prepare('PRAGMA table_info(tasks)').all() as { name: string }[]
+    if (!columns.some((c) => c.name === 'conversation_id')) {
+      this.db.exec('ALTER TABLE tasks ADD COLUMN conversation_id TEXT')
+      this.db.exec('UPDATE tasks SET conversation_id = id WHERE conversation_id IS NULL')
+    }
+    this.db.exec('CREATE INDEX IF NOT EXISTS tasks_conversation ON tasks(conversation_id, created_at)')
   }
 
   saveTask(task: TaskState): void {
     if (this.deletedTasks.has(task.id)) return
     this.db
       .prepare(
-        `INSERT INTO tasks (id, request, status, headline, created_at, updated_at, state_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO tasks (id, request, status, headline, created_at, updated_at, state_json, conversation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            status = excluded.status,
            headline = excluded.headline,
@@ -89,7 +97,8 @@ export class Store {
         task.summary?.headline ?? null,
         task.createdAt,
         task.updatedAt,
-        JSON.stringify(task)
+        JSON.stringify(task),
+        task.conversationId ?? task.id
       )
 
     // Actions are written individually so undo survives a crash mid-task.
@@ -145,6 +154,26 @@ export class Store {
     }
   }
 
+  /** Every turn of the chat this turn belongs to, oldest first. */
+  conversationOf(id: string): TaskState[] {
+    const rows = this.db
+      .prepare(
+        `SELECT state_json FROM tasks
+         WHERE conversation_id = (SELECT conversation_id FROM tasks WHERE id = ?)
+         ORDER BY created_at ASC`
+      )
+      .all(id) as { state_json: string }[]
+    return rows.map((r) => JSON.parse(r.state_json) as TaskState)
+  }
+
+  /** Deletes a whole chat, every turn of it, and returns the ids removed. */
+  deleteConversation(id: string): string[] {
+    const turns = this.conversationOf(id)
+    if (turns.some((t) => !isTerminal(t.status))) throw new Error('Stop this task before deleting it.')
+    for (const t of turns) this.deleteTask(t.id)
+    return turns.map((t) => t.id)
+  }
+
   clearHistory(): string[] {
     const rows = this.db.prepare("SELECT id FROM tasks WHERE status IN ('succeeded', 'failed', 'cancelled')").all() as { id: string }[]
     for (const row of rows) this.deleteTask(row.id)
@@ -154,9 +183,15 @@ export class Store {
   listTasks(limit = 25): TaskSummaryRow[] {
     const rows = this.db
       .prepare(
-        `SELECT t.id, t.request, t.status, t.headline, t.created_at,
+        // One row per chat: named by how it began, showing how it stands now.
+        `SELECT t.id, first.request AS request, t.status, t.headline, t.created_at, c.turns,
                 (SELECT COUNT(*) FROM actions a WHERE a.task_id = t.id AND a.undo_json IS NOT NULL AND a.reversed = 0) AS undoable
-         FROM tasks t ORDER BY t.created_at DESC LIMIT ?`
+         FROM (SELECT conversation_id, MIN(created_at) AS started, MAX(created_at) AS latest, COUNT(*) AS turns
+               FROM tasks GROUP BY conversation_id) c
+         JOIN tasks t ON t.conversation_id = c.conversation_id AND t.created_at = c.latest
+         JOIN tasks first ON first.conversation_id = c.conversation_id AND first.created_at = c.started
+         GROUP BY c.conversation_id
+         ORDER BY t.created_at DESC LIMIT ?`
       )
       .all(limit) as {
       id: string
@@ -164,6 +199,7 @@ export class Store {
       status: string
       headline: string | null
       created_at: number
+      turns: number
       undoable: number
     }[]
     return rows.map((r) => ({
@@ -172,7 +208,8 @@ export class Store {
       status: r.status as TaskSummaryRow['status'],
       headline: r.headline ?? '',
       createdAt: r.created_at,
-      undoable: r.undoable > 0
+      undoable: r.undoable > 0,
+      turns: r.turns
     }))
   }
 

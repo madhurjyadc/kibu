@@ -3,6 +3,7 @@ import type { Evidence, TaskState, UserQuestion } from '../../../shared/protocol
 import { basename } from '../lib/paths.js'
 import { Markdown, plainText } from './Markdown.js'
 import { Icon } from './Icon.js'
+import { Status, taskStatus } from './Dots.js'
 
 const RUNNING = ['pending', 'observing', 'planning', 'executing', 'verifying', 'awaiting_user', 'paused']
 
@@ -14,11 +15,18 @@ const RUNNING = ['pending', 'observing', 'planning', 'executing', 'verifying', '
 export function Reply({
   task,
   onAnswer,
-  onSteps
+  onSteps,
+  onWorkspace,
+  onRetry,
+  badge
 }: {
   task: TaskState
+  /** Show how it ended. A plain answer did nothing, so it has no outcome to badge. */
+  badge: boolean
+  onRetry(): void
   onAnswer(question: UserQuestion, optionId: string | null, text?: string): Promise<void>
   onSteps(): void
+  onWorkspace(): void
 }): React.JSX.Element {
   const [undoing, setUndoing] = useState(false)
   const [undoNote, setUndoNote] = useState<string | null>(null)
@@ -49,7 +57,10 @@ export function Reply({
       <p className="asked">{task.request}</p>
       <div className="kibu-turn">
       <div className="kibu-says">
-        <div className="says-head">Kibu{!running && <span>{took(task)}</span>}</div>
+        <div className="says-head">Kibu{!running && <span>{took(task)}</span>}
+          {!running && badge && <Status {...taskStatus(task.status)} />}
+          {!running && (task.status === 'failed' || task.status === 'cancelled') && <button className="subtle-button retry" onClick={onRetry}>Try again</button>}
+        </div>
 
       {!running && !summary && <p className="said">{task.error || task.statusLine || "Task ended."}</p>}
       {running && task.plan.length > 0 && <details><summary>Plan</summary><ol className="task-plan">{task.plan.map((step) => <li key={step.id} className={step.status}><span>{step.status === "done" ? "✓" : step.status === "active" ? "◉" : "○"}</span>{step.description}</li>)}</ol></details>}
@@ -84,7 +95,7 @@ export function Reply({
           {summary.evidence.length > 0 && (
             <ul className="proof">
               {summary.evidence.map((e, i) => (
-                <Proof key={`${e.value}-${i}`} evidence={e} />
+                <Proof key={`${e.value}-${i}`} evidence={e} onWorkspace={onWorkspace} />
               ))}
             </ul>
           )}
@@ -126,7 +137,7 @@ function took(task: TaskState): string {
  * right. Text is something to read, so it gets the full width and wraps —
  * squeezing prose into a right-hand column is what made these unreadable.
  */
-function Proof({ evidence }: { evidence: Evidence }): React.JSX.Element {
+function Proof({ evidence, onWorkspace }: { evidence: Evidence; onWorkspace(): void }): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   async function open(reveal = false): Promise<void> {
     try {
@@ -135,6 +146,16 @@ function Proof({ evidence }: { evidence: Evidence }): React.JSX.Element {
       else if (reveal) await window.kibu.revealPath(evidence.value)
       else await window.kibu.openPath(evidence.value)
     } catch (err) { setError(err instanceof Error ? err.message : 'Couldn’t open this result.') }
+  }
+  // Something kept in the workspace is a place to go, not a note to read.
+  if (evidence.kind === 'text' && evidence.label === 'Kibu workspace') {
+    return (
+      <li className="proof-row">
+        <span className="proof-glyph">›</span>
+        <button className="proof-main is-link" onClick={onWorkspace}>Saved to your workspace</button>
+        <button className="proof-side" onClick={onWorkspace}>Open</button>
+      </li>
+    )
   }
   if (evidence.kind === 'text') {
     return (

@@ -1,5 +1,7 @@
 import type { OsAdapter } from '../../os/adapter.js'
 import type { Evidence } from '../../shared/types.js'
+import type { CodingApp, ModelConfig } from '../../shared/protocol.js'
+import { quickModel } from '../model/claude-code-planner.js'
 
 /**
  * Answering "what are you?" without a model call.
@@ -25,6 +27,48 @@ const ABOUT = new RegExp(`^${GREETING}${QUESTION}${TAIL}\\s*[?!.]*$`, 'i')
 
 export function isAboutKibu(request: string): boolean {
   return ABOUT.test(request.trim())
+}
+
+/**
+ * "Which model are you?", "what ai r u", "are you chatgpt". Short questions
+ * only, and never one asking for advice ("what model should I use for …").
+ */
+const MODEL_QUESTION = /\b(?:(?:which|what)\s+(?:ai\s+)?(?:model|llm|ai|brain)s?\b.*\b(?:you|u|kibu)\b|(?:are|r)\s+(?:you|u)\s+(?:chat ?gpt|gpt|claude|gemini|an? ai|ai)\b)/i
+
+export function isAboutModel(request: string): boolean {
+  const text = request.trim()
+  return text.split(/\s+/).length <= 8 && MODEL_QUESTION.test(text) && !/\b(recommend|should i|best|for my)\b/i.test(text)
+}
+
+/** "claude-opus-5" → "Claude Opus 5"; Claude Code aliases ("sonnet") → "Sonnet". */
+function modelName(id: string): string {
+  const words = id.replace(/^claude-/, '').split('-')
+  const name = words.filter((w) => !/^\d+$/.test(w)).map((w) => w[0]!.toUpperCase() + w.slice(1)).join(' ')
+  const version = words.filter((w) => /^\d+$/.test(w)).join('.')
+  return `${/^claude-/.test(id) ? 'Claude ' : ''}${name}${version ? ` ${version}` : ''}`
+}
+
+/** Which models answer, stated from configuration rather than guessed by a model. */
+export function describeModels(route: 'api' | CodingApp | null, model: ModelConfig, jev: boolean): SelfDescription {
+  const headline =
+    route === 'claude-code'
+      ? `I think with Claude, through the Claude Code on this Mac: ${modelName(quickModel(model.claudeCode))} for quick answers, ${modelName(model.claudeCode)} for anything I do on your Mac.`
+      : route === 'codex' || route === 'opencode'
+        ? `I think through the ${route === 'codex' ? 'Codex' : 'OpenCode'} on this Mac, with ${(route === 'codex' ? model.codex : model.opencode) || 'the model it is set up to use'}.`
+      : route === 'api'
+        ? `I think with ${modelName(model.planner)}, through the Anthropic API — thinking briefly for quick answers, and harder for anything I do on your Mac.`
+        : 'No thinking model is connected yet. Add an Anthropic key under /keys, or let me use Claude Code under /tune.'
+  const evidence: Evidence[] = [
+    {
+      kind: 'text',
+      label: 'Reading your request',
+      value: jev
+        ? 'Jev, a small fast model from TypeSafe AI, sorts each request in about half a second — what kind of job it is, and which tools it needs.'
+        : 'Local rules sort each request; Jev is switched off.'
+    },
+    { kind: 'text', label: 'No model at all', value: 'Timers, notes, reminders, sums and questions like this one run on local code, instantly.' }
+  ]
+  return { headline, evidence }
 }
 
 export interface SelfDescription {

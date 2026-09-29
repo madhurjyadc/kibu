@@ -53,7 +53,7 @@ await page.addInitScript(() => {
     clearHistory: async () => { const ids = state.history.filter((r) => ['succeeded', 'failed', 'cancelled'].includes(r.status)).map((r) => r.id); state.history = state.history.filter((r) => !ids.includes(r.id)); state.calls.push(['clear']); window.__test.emit('deleted', ids) },
     answerQuestion: async (req) => state.calls.push(['answer', req]), closePanel: async () => {},
     onHistoryDeleted: sub('deleted'), onTaskUpdate: sub('task'), onLog: sub('log'), onDroppedPaths: sub('drop'), onPetState: sub('pet'), onDesktopSession: sub('desktop'), onFocusInput: sub('focus'), onPanelState: sub('panel'), onSeed: sub('seed'), petCompose: async () => {},
-    getSettings: async () => state.settings, setSettings: async (next) => Object.assign(state.settings, next), hasApiKey: async () => false, hasJevKey: async () => false, hasClaudeCode: async () => true,
+    getSettings: async () => state.settings, setSettings: async (next) => Object.assign(state.settings, next), hasApiKey: async () => false, hasJevKey: async () => false, hasClaudeCode: async () => true, codingApps: async () => [{ id: 'claude-code', label: 'Claude Code', available: true }, { id: 'codex', label: 'Codex', available: true }, { id: 'opencode', label: 'OpenCode', available: false }],
     setApiKey: async () => { state.calls.push(['key']); state.ready = true; return true }, setJevKey: async () => true,
     requestPermission: async () => {}, resizePanel: async () => {}, pauseTask: async (id) => state.calls.push(['pause', id]), resumeTask: async () => {}, cancelTask: async (id) => state.calls.push(['cancel', id]),
     getTask: async () => state.task, undoTask: async () => ({ reversed: 2, skipped: [] }), stopDesktopSession: async () => {},
@@ -138,12 +138,39 @@ try {
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
   await page.getByText('2 restored').waitFor()
   await page.screenshot({ path: `${artifacts}/result.png` })
-  await page.getByRole('button', { name: 'Delete this task' }).click()
-  await page.getByText('Delete task and undo history? Files stay.').waitFor()
+  // Continuing and starting over are different places: the reply box under a
+  // chat continues it; the launcher, reached by New chat or ⌘N, starts clean.
+  const starts = () => page.evaluate(() => window.__test.state.calls.filter((c) => c[0] === 'start').map((c) => c[1]))
+  const before = (await starts()).length
+  await page.getByLabel('Reply to Kibu', { exact: true }).fill('Now do the same for Desktop')
+  await page.getByRole('button', { name: 'Send reply', exact: true }).click()
+  await page.waitForFunction((n) => window.__test.state.calls.filter((c) => c[0] === 'start').length > n, before)
+  assert.equal((await starts()).at(-1).followUp, 'test-task', 'A reply continues the chat it is under')
+  await page.evaluate((t) => window.__test.emit('task', { ...t, id: 'test-task-2', replyTo: 'test-task', request: 'Now do the same for Desktop', actions: [], summary: { headline: 'Desktop is tidy too.', evidence: [{ kind: 'text', label: 'Kibu workspace', value: 'Saved to your workspace on this Mac.' }], undoable: false } }), done)
+  await page.getByRole('main').getByText('Desktop is tidy too.').waitFor()
+  await page.getByRole('main').getByText('Your Downloads folder is a little lighter.').waitFor()
+  assert.match(await page.locator('.chat-title strong').textContent(), /Organize my Downloads/, 'The chat is named after how it began')
+  assert.equal(await page.locator('.turn-past').count(), 1)
+  await page.screenshot({ path: `${artifacts}/chat.png` })
+  await page.getByRole('button', { name: 'Open', exact: true }).click()
+  await page.getByRole('heading', { name: 'Workspace' }).waitFor()
+  await page.getByRole('button', { name: 'Back home' }).click()
+  await page.getByRole('button', { name: 'Delete conversation' }).click()
+  await page.getByText('Delete this conversation and its undo history? Files stay.').waitFor()
   assert.equal(await page.evaluate(() => window.__test.state.calls.some((c) => c[0] === 'delete')), false, 'Deletion requires an explicit click')
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await page.getByRole('button', { name: 'Find', exact: true }).waitFor()
-  assert.equal(await page.evaluate(() => window.__test.state.calls.some((c) => c[0] === 'delete')), true)
+  assert.deepEqual(await page.evaluate(() => window.__test.state.calls.filter((c) => c[0] === 'delete').map((c) => c[1])), ['test-task', 'test-task-2'], 'Deleting a chat deletes every turn of it')
+  await page.evaluate((t) => window.__test.emit('task', { ...t, id: 'test-task-3' }), done)
+  await page.getByRole('button', { name: 'New chat', exact: true }).click()
+  await page.getByRole('button', { name: 'Find', exact: true }).waitFor()
+  await page.getByLabel('Ask Kibu for help', { exact: true }).fill('What is on my calendar?')
+  await page.getByRole('button', { name: 'Send task', exact: true }).click()
+  await page.waitForFunction((n) => window.__test.state.calls.filter((c) => c[0] === 'start').length > n + 1, before)
+  assert.equal((await starts()).at(-1).followUp, null, 'The launcher starts a new chat')
+  await page.evaluate((t) => window.__test.emit('task', { ...t, id: 'test-task-4' }), done)
+  await page.getByLabel('Reply to Kibu', { exact: true }).press('Meta+n')
+  await page.getByRole('button', { name: 'Find', exact: true }).waitFor()
   await page.evaluate(() => {
     window.__test.state.history = [
       { id: 'old1', request: 'Find my document', status: 'succeeded', headline: 'Found', createdAt: Date.now(), undoable: false },
@@ -157,7 +184,7 @@ try {
   await page.screenshot({ path: `${artifacts}/history.png` })
   await page.getByRole('button', { name: 'Clear', exact: true }).click()
   await page.getByRole('button', { name: 'Delete all', exact: true }).click()
-  await page.getByText('No saved tasks.').waitFor()
+  await page.getByText('No saved chats.').waitFor()
   await page.getByRole('button', { name: 'Kibu home' }).click()
   await page.getByRole('button', { name: 'Attach files', exact: true }).click()
   await page.getByText('selected.pdf', { exact: true }).waitFor()

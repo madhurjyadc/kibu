@@ -2,14 +2,15 @@ import { runBrainWorkflow, isBrainRequest } from '../workflows/brain.js'
 import { randomUUID } from 'node:crypto'
 import type { ZodType } from 'zod'
 import { Planner, addCost, type PlannerLike } from '../model/planner.js'
-import { Jev, summarizeJev, type Family, type PlanSetup } from '../model/jev.js'
+import { Jev, localPlanSetup, summarizeJev, type Family, type PlanSetup } from '../model/jev.js'
 import { MAC_FAMILIES, gatherContext } from '../tools/mac.js'
 import { looksSecret, makeMemory, memoryNote, mergeMemory, recall } from '../memory.js'
 import { routeToWorkflow, type WorkflowContext } from '../workflows/index.js'
-import { describeSelf, isAboutKibu } from './about.js'
-import { fallbackUnderstanding, routeFor, understand, type Understanding } from '../model/understand.js'
+import { describeModels, describeSelf, isAboutKibu, isAboutModel } from './about.js'
+import { fallbackUnderstanding, folderFor, routeFor, understand, type Understanding } from '../model/understand.js'
 import { evaluateArithmetic } from './calculate.js'
-import { basename } from 'node:path'
+import { basename, join } from 'node:path'
+import { homedir } from 'node:os'
 import { checkScopes, describeMissing, extendAuthorization, grantFor, normalizePath } from '../authorization.js'
 import { clearElementCache } from '../tools/desktop.js'
 import type { BrowserSession, ScopeRequest, ToolContext, ToolDefinition, ToolRegistry } from '../tools/registry.js'
@@ -26,7 +27,7 @@ import type {
   UserQuestion,
   VerificationResult
 } from '../../shared/types.js'
-import type { AnswerPayload, FrontWindow, LogEntry, MemoryEvent, ModelConfig, PreviousTurn } from '../../shared/protocol.js'
+import type { AnswerPayload, CodingApp, FrontWindow, LogEntry, MemoryEvent, ModelConfig, PreviousTurn } from '../../shared/protocol.js'
 
 export class CancelledError extends Error {
   constructor() {
@@ -84,9 +85,14 @@ export interface RunnerDeps {
   confirmEveryAction: boolean
   /** Overrides the planning model. Used to swap providers, and by tests. */
   createPlanner?: () => PlannerLike
+  /** Which way planning goes, so "which model are you?" gets a true answer. */
+  plannerRoute?: 'api' | CodingApp
   /** Transport override for Jev. Used to exercise workflows without a network. */
   jevFetch?: import('@typesafe-ai/sdk').Fetch
 }
+
+/** What the quick model may call while answering: saying it is done, or asking. */
+const ANSWER_TOOLS = new Set(['finish', 'ask_user', 'report_progress'])
 
 /** A reply that talks about answering rather than answering. */
 export function isNarration(text: string): boolean {
@@ -139,6 +145,8 @@ export class TaskRunner {
   private evidence: Evidence[] = []
   private startedAt = Date.now()
   private holdsDesktop = false
+  /** The quick model is answering: no tools needed, as far as anyone can tell. */
+  private answerOnly = false
   /** How this request was read. Computed once, in understand(). */
   private read: Understanding | null = null
   /** This task's view of memory, kept current as it saves and forgets. */
@@ -275,11 +283,24 @@ export class TaskRunner {
         this.answerAboutSelf()
         return this.task
       }
+      // Which model answers is configuration, not something to ask a model.
+      if (isAboutModel(this.task.request)) {
+        const route = this.deps.plannerRoute ?? (this.canPlan() ? 'api' : null)
+        const self = describeModels(route, this.deps.model, this.jev.available)
+        this.evidence = self.evidence
+        this.setStatus('succeeded', 'Said which model')
+        this.hooks.onPetState('finished')
+        this.task.summary = { headline: self.headline, evidence: self.evidence, undoable: false }
+        this.log('info', 'loop', 'answered which model locally; no model call')
+        this.emit()
+        return this.task
+      }
       if (this.deps.brain && this.deps.registry.get('kibu_workspace')) {
         const local = await runBrainWorkflow(this.task.request, this.deps.droppedPaths, this.workflowContext(), this.deps.previousApp ?? this.deps.frontWindow?.name)
         if (local) { this.completeFrom(local); return this.task }
       }
       await this.understand()
+      await this.offerUpfrontGrant()
       // A known task shape is handled by code plus Jev, with no planning
       // model involved at all. Only novel requests reach the planner.
       const handled = await this.tryWorkflow()
@@ -405,9 +426,14 @@ export class TaskRunner {
       const prev = this.deps.previousTurn
       if (prev) {
         this.planner.addNote(
-          `${prev.secondsAgo}s ago the user asked: "${prev.request}". You answered: "${prev.headline}". ` +
-            `This message is very likely a follow-up to that. Read it that way before considering it vague, ` +
-            `and do not ask them to repeat something they have already told you.`
+          prev.explicit
+            ? `The user is replying in the same conversation.` +
+                (prev.earlier?.length ? ` Earlier in it:\n${prev.earlier.map((t) => `- They asked: "${t.request}". You answered: "${t.headline}".`).join('\n')}\n` : ' ') +
+                `They last asked: "${prev.request}". You answered: "${prev.headline}". ` +
+                `Read this message as a continuation of that exchange, and do not ask them to repeat something they have already told you.`
+            : `${prev.secondsAgo}s ago the user asked: "${prev.request}". You answered: "${prev.headline}". ` +
+                `This message is very likely a follow-up to that. Read it that way before considering it vague, ` +
+                `and do not ask them to repeat something they have already told you.`
         )
       }
       const missing = this.missingCapabilities()
@@ -601,7 +627,12 @@ export class TaskRunner {
   private async prepareForPlanning(): Promise<PlanSetup> {
     const route = (this.task as TaskState & { route?: string }).route ?? 'unclear'
     const setup = await this.jev.planSetup(this.task.request, route, this.deps.droppedPaths.length > 0)
-    this.planner.setTier?.(setup.quick ? 'quick' : 'full')
+    // The quick model only ever answers. Anything that acts on the Mac — a
+    // tool family, something on screen to read, the web — gets the full model
+    // from the first step, however small the job looks: a fast wrong move
+    // costs more than a slower right one.
+    this.answerOnly = setup.quick && setup.families.length === 0 && setup.start === 'none' && !Object.values(setup.context).some(Boolean)
+    this.planner.setTier?.(this.answerOnly ? 'quick' : 'full')
 
     const app = this.deps.previousApp ?? this.deps.frontWindow?.name ?? null
     if (app) this.planner.addNote(`The user was in ${app} when they asked.`)
@@ -722,6 +753,14 @@ export class TaskRunner {
       this.setStatus('planning', this.task.statusLine || 'Thinking')
       this.hooks.onPetState('thinking')
       const proposal = await this.planner.propose(schema)
+      // The quick model reached for a tool: this is a job after all. Its
+      // proposal is dropped unrun, and the full model decides the step.
+      if (this.answerOnly && this.planner.quickSwapsModel && proposal.calls.some((c) => !ANSWER_TOOLS.has(c.name))) {
+        this.answerOnly = false
+        widen('the quick model reached for a tool, so the full model takes this job')
+        this.planner.addNote('Nothing from your last reply was run: a more capable model is taking over. Decide this step afresh.')
+        continue
+      }
       this.task.cost = addCost(this.task.cost, proposal)
       if (proposal.text) this.log('info', 'model', proposal.text)
 
@@ -960,6 +999,71 @@ export class TaskRunner {
    * Authorization, questions, limits
    * ---------------------------------------------------------------- */
 
+  /**
+   * One question before a job that will need permission, instead of one per
+   * step as it goes.
+   *
+   * What the job will touch is predicted from how the request was read — a
+   * named folder, whether it changes files, apps it names, browsing in the
+   * user's own browser — with no extra model call. "Allow all" grants all of
+   * it for this task. "Ask me each time" leaves the step-by-step questions in
+   * place. Either way, anything the prediction missed is still asked about
+   * when it comes up, so a wrong guess can only cost a question, never grant
+   * more than was shown.
+   */
+  private async offerUpfrontGrant(): Promise<void> {
+    const { scopes, anyWebsite } = await this.predictNeeds()
+    const missing = checkScopes(this.task.authorization, scopes).missing
+    const web = anyWebsite && !this.task.authorization.origins.includes('*')
+    if (!missing.length && !web) return
+    const lines = [...new Set(missing.map((m) => describeMissing([m])))]
+    if (web) lines.push('open websites in your own browser')
+    const answer = await this.ask({
+      reason: 'authorization',
+      prompt: `Before I start, this will need your OK to:\n${lines.map((l) => `- ${l[0]!.toUpperCase()}${l.slice(1)}`).join('\n')}`,
+      allowFreeText: false,
+      options: [
+        { id: 'all', label: 'Allow all', detail: 'For this task only' },
+        { id: 'each', label: 'Ask me each time' }
+      ]
+    })
+    if (answer.optionId !== 'all') {
+      this.log('info', 'authorization', 'up front: the user chose to be asked step by step')
+      return
+    }
+    this.task.authorization = extendAuthorization(this.task.authorization, { ...grantFor(missing), ...(web ? { origins: ['*'] } : {}) })
+    this.log('info', 'authorization', `up front: granted ${lines.join('; ')}`)
+  }
+
+  /** What this job is likely to touch. A guess that only ever shapes one question. */
+  private async predictNeeds(): Promise<{ scopes: ScopeRequest[]; anyWebsite: boolean }> {
+    const request = this.task.request
+    const read = this.read ?? fallbackUnderstanding()
+    const setup = localPlanSetup(request, routeFor(read).route, this.deps.droppedPaths.length > 0)
+    const scopes: ScopeRequest[] = []
+    const changes = ['organize', 'rename', 'make'].includes(read.action) ||
+      /\b(move|delete|trash|rename|organi[sz]e|sort|tidy|clean ?up|declutter)\b/i.test(request)
+    // Only what would otherwise stop and ask. Looking for things never does,
+    // so reads are not predicted. Changing files somewhere unnamed is not
+    // guessed at either: that question waits until the folder is known.
+    const folder = folderFor(read.place)
+    if (changes && folder) scopes.push({ kind: 'write', path: join(homedir(), folder) })
+    if (setup.families.includes('desktop') || setup.families.includes('system') || read.action === 'app') {
+      try {
+        const apps = typeof this.deps.os.listApps === 'function' ? await this.deps.os.listApps() : []
+        const words = request.toLowerCase()
+        for (const app of apps) {
+          const name = app.name.toLowerCase()
+          if (name.length >= 3 && new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(words)) scopes.push({ kind: 'app', name: app.name })
+        }
+      } catch {
+        // Not knowing the running apps just means asking later.
+      }
+    }
+    const anyWebsite = setup.ownBrowser && (setup.families.includes('browser') || read.action === 'web')
+    return { scopes, anyWebsite }
+  }
+
   private async requestAuthorization(tool: ToolDefinition, missing: ScopeRequest[]): Promise<boolean> {
     const description = describeMissing(missing)
     const answer = await this.ask({
@@ -967,7 +1071,7 @@ export class TaskRunner {
       prompt: `Kibu needs your OK to ${description}.`,
       allowFreeText: false,
       options: [
-        { id: 'allow', label: 'Allow', detail: `Allows this for the rest of this task` },
+        { id: 'allow', label: 'Allow', detail: `Covers the whole folder for the rest of this task` },
         { id: 'deny', label: 'Not now' }
       ]
     })

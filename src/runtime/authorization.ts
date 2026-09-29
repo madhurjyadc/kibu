@@ -1,5 +1,6 @@
-import { resolve, sep } from 'node:path'
+import { basename, dirname, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
+import { statSync } from 'node:fs'
 import type { Authorization } from '../shared/types.js'
 import type { ScopeRequest } from './tools/registry.js'
 
@@ -108,6 +109,34 @@ export function extendAuthorization(auth: Authorization, grant: Partial<Authoriz
   }
 }
 
+/**
+ * The folder a "yes" covers: a folder itself, or the folder a file sits in.
+ *
+ * Granting only the exact file meant the next file in the same folder asked
+ * again — tidying a Desktop once took fifty separate "Allow" clicks. Nobody
+ * means "you may move this screenshot but not the one next to it". The home
+ * folder and the disk root are never widened to: a file sitting directly in
+ * either is granted on its own.
+ */
+export function grantRoot(path: string): string {
+  const p = normalizePath(path)
+  let isDir = false
+  try {
+    isDir = statSync(p).isDirectory()
+  } catch {
+    // Not there yet: it is about to be created, inside its parent.
+  }
+  if (isDir) return p
+  const parent = dirname(p)
+  return parent === normalizePath(homedir()) || parent === dirname(parent) ? p : parent
+}
+
+/** A folder the way a person names it: "Desktop", "Downloads/Invoices". */
+function folderLabel(path: string): string {
+  const home = normalizePath(homedir())
+  return path.startsWith(home + sep) ? path.slice(home.length + 1) : path === home ? 'your home folder' : basename(path) || path
+}
+
 /** Turns missing scopes into a sentence the user can act on. */
 export function describeMissing(missing: ScopeRequest[]): string {
   const parts: string[] = []
@@ -116,8 +145,8 @@ export function describeMissing(missing: ScopeRequest[]): string {
     { kind: 'read' | 'write' }
   >[]
   if (paths.length) {
-    const verb = paths.some((p) => p.kind === 'write') ? 'change files in' : 'read'
-    const unique = [...new Set(paths.map((p) => p.path))]
+    const verb = paths.some((p) => p.kind === 'write') ? 'change files in' : 'look in'
+    const unique = [...new Set(paths.map((p) => folderLabel(grantRoot(p.path))))]
     parts.push(`${verb} ${unique.slice(0, 3).join(', ')}${unique.length > 3 ? ` and ${unique.length - 3} more` : ''}`)
   }
   for (const m of missing) {
@@ -138,8 +167,8 @@ export function grantFor(missing: ScopeRequest[]): Partial<Authorization> {
     capabilities: []
   }
   for (const m of missing) {
-    if (m.kind === 'read') grant.readRoots!.push(normalizePath(m.path))
-    if (m.kind === 'write') grant.writeRoots!.push(normalizePath(m.path))
+    if (m.kind === 'read') grant.readRoots!.push(grantRoot(m.path))
+    if (m.kind === 'write') grant.writeRoots!.push(grantRoot(m.path))
     if (m.kind === 'app') grant.apps!.push(m.name)
     if (m.kind === 'origin') grant.origins!.push(m.url)
     if (m.kind === 'capability') grant.capabilities!.push(m.name)

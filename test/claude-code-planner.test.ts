@@ -102,7 +102,7 @@ test('the first turn sends the request, the authorization and the tool list', as
   assert.ok(!seen[0]!.args.includes('--resume'))
 })
 
-test('later turns resume the session and carry the tool results', async () => {
+test('later turns replay the conversation and carry the tool results, with nothing saved by the CLI', async () => {
   const seen: { args: string[]; input: string }[] = []
   let turn = 0
   const planner = new ClaudeCodePlanner({
@@ -122,14 +122,14 @@ test('later turns resume the session and carry the tool results', async () => {
   await planner.propose(TOOLS)
 
   const second = seen[1]!
-  assert.deepEqual(second.args.slice(second.args.indexOf('--resume'), second.args.indexOf('--resume') + 2), [
-    '--resume',
-    'sess-1'
-  ])
+  assert.ok(!second.args.includes('--resume'))
+  assert.ok(second.args.includes('--no-session-persistence'), 'the CLI keeps no transcript of its own')
   assert.match(second.input, /a\.pdf, b\.png/)
   assert.match(second.input, /close to the step limit/)
-  // The seeded request is not resent: the session already holds it.
-  assert.ok(!second.input.includes('<user_request>'))
+  // The request comes back as replayed context, not as a new request.
+  const [earlier, next] = second.input.split('The next message:')
+  assert.match(earlier!, /<user_request>/)
+  assert.ok(!next!.includes('<user_request>'))
 })
 
 test('an unparseable reply is retried once, then reported honestly', async () => {

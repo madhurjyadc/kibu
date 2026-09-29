@@ -178,7 +178,18 @@ describe('the planner, for personal browsing', () => {
       registry, model: DEFAULT_MODEL_CONFIG, apiKey: null, jevEnabled: false, jevApiKey: null, workflowsEnabled: true,
       droppedPaths: [], frontWindow: null, previousTurn: null, confirmEveryAction: false, createPlanner: () => planner
     }
-    await new TaskRunner(task, deps, { onUpdate() {}, onPetState() {}, onLog() {}, async claimDesktop() {}, releaseDesktop() {} }).run()
+    // Browsing as the user asks once, up front, for every site, not one question per site.
+    const asked: string[] = []
+    const runner: TaskRunner = new TaskRunner(task, deps, {
+      onUpdate(t) {
+        const q = t.question
+        if (q && !asked.includes(q.id)) { asked.push(q.id); queueMicrotask(() => runner.answer({ questionId: q.id, optionId: 'all' })) }
+      },
+      onPetState() {}, onLog() {}, async claimDesktop() {}, releaseDesktop() {}
+    })
+    const final = await runner.run()
+    assert.equal(asked.length, 1)
+    assert.ok(final.authorization.origins.includes('*'), 'allowing all covers every site for this task')
     const menu = menus[0]!
     assert.ok(menu.includes('your_browser_open') && menu.includes('your_browser_click'))
     assert.ok(!menu.includes('browser_navigate'), "Kibu's separate browser is not offered")

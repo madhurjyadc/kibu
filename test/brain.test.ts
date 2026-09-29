@@ -12,6 +12,7 @@ import { userTools } from '../src/runtime/tools/user.js'
 import { defaultLimits, emptyAuthorization, type TaskState } from '../src/shared/types.js'
 import { DEFAULT_MODEL_CONFIG } from '../src/shared/protocol.js'
 import { isBrainRequest } from '../src/runtime/workflows/brain.js'
+import { spelledDurations } from '../src/runtime/when.js'
 
 async function withBrain(run: (brain: BrainStore, dir: string) => Promise<void> | void) {
   const dir = await mkdtemp(join(tmpdir(), 'kibu-brain-'))
@@ -143,3 +144,11 @@ test('sessions and explicit task estimates work through the real runner without 
   assert.equal(task.status, 'succeeded')
   assert.equal(brain.snapshot().items.find(i => i.kind === 'task')?.estimateMinutes, 20)
 }))
+
+test('spelled-out timers take the instant local path', () => {
+  assert.equal(spelledDurations('start a timer of one minute'), 'start a timer of 1 minute')
+  assert.equal(spelledDurations('set a twenty-five minute focus timer'), 'set a 25 minute focus timer')
+  assert.equal(spelledDurations('start a timer for half an hour'), 'start a timer for 30 minutes')
+  assert.equal(spelledDurations('remind someone about a timer'), 'remind someone about a timer', 'only numbers in front of a unit change')
+  assert.equal(isBrainRequest('start a one minute timer'), true)
+})

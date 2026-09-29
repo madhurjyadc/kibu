@@ -210,9 +210,11 @@ describe('Claude Code planner tiers and growing menus', () => {
     await planner.propose(TOOLS)
     await planner.propose([...TOOLS, { name: 'desktop_click', description: 'click', input_schema: {} }])
     await planner.propose([...TOOLS, { name: 'desktop_click', description: 'click', input_schema: {} }])
-    assert.match(prompts[1]!, /More tools are now available:[\s\S]*desktop_click/)
-    assert.doesNotMatch(prompts[1]!, /notes_create/)
-    assert.doesNotMatch(prompts[2]!, /desktop_click/)
+    // Each call replays what came before; the new part is what follows it.
+    const latest = (prompt: string): string => prompt.split('The next message:').at(-1)!
+    assert.match(latest(prompts[1]!), /More tools are now available:[\s\S]*desktop_click/)
+    assert.doesNotMatch(latest(prompts[1]!), /notes_create/)
+    assert.doesNotMatch(latest(prompts[2]!), /desktop_click/)
   })
 })
 
@@ -266,7 +268,7 @@ class ScriptedPlanner implements PlannerLike {
   public tiers: string[] = []
   public notes: string[] = []
   private turn = 0
-  constructor(private readonly script: { name: string; input: unknown }[][]) {}
+  constructor(private readonly script: { name: string; input: unknown }[][], readonly quickSwapsModel = false) {}
   seed(): void {}
   addToolResults(): void {}
   addNote(note: string): void { this.notes.push(note) }
@@ -373,7 +375,7 @@ describe('the planner path', () => {
   beforeEach(() => { mac = fakeMac(); setMacBridge(mac) })
   afterEach(() => setMacBridge(osascriptBridge))
 
-  test('is shown only the tools the request needs, and the quick model', async () => {
+  test('is shown only the tools the request needs, on the full model because it acts', async () => {
     const planner = new ScriptedPlanner([[{ name: 'notes_create', input: { title: 'Summary', body: 'short' } }], []])
     const t = await run('summarize this page into a note', { workflows: false, planner })
     assert.equal(t.status, 'succeeded', t.summary?.headline)
@@ -383,7 +385,8 @@ describe('the planner path', () => {
     assert.ok(menu.includes('ask_user'))
     assert.ok(!menu.includes('desktop_inspect_window'), 'no window-driving for a note')
     assert.ok(!menu.includes('files_move'))
-    assert.deepEqual(planner.tiers, ['quick'])
+    // Writing a note changes something: the quick model only ever answers.
+    assert.deepEqual(planner.tiers, ['full'])
     assert.ok(planner.notes.some((n) => /The user was in Safari/.test(n)))
   })
 
@@ -393,7 +396,23 @@ describe('the planner path', () => {
     await run('read my note about the trip', { workflows: false, planner })
     assert.ok(!planner.menus[0]!.includes('desktop_inspect_window'))
     assert.ok(planner.menus.at(-1)!.includes('desktop_inspect_window'), 'the menu grew')
+    assert.ok(!planner.tiers.includes('quick'), 'a job never runs on the quick model')
+  })
+
+  test('a plain question is answered by the quick model', async () => {
+    const planner = new ScriptedPlanner([[]])
+    const t = await run('why is the sky blue?', { workflows: false, planner })
+    assert.equal(t.status, 'succeeded')
+    assert.deepEqual(planner.tiers, ['quick'])
+  })
+
+  test('if the quick model reaches for a tool, nothing runs and the full model takes the job', async () => {
+    const planner = new ScriptedPlanner([[{ name: 'notes_create', input: { title: 'Sky', body: 'blue' } }], []], true)
+    const t = await run('why is the sky blue?', { workflows: false, planner })
+    assert.equal(t.status, 'succeeded')
     assert.deepEqual(planner.tiers, ['quick', 'full'])
+    assert.equal(t.actions.length, 0, "the quick model's proposal was dropped unrun")
+    assert.ok(planner.notes.some((n) => /more capable model is taking over/.test(n)))
   })
 })
 
@@ -438,8 +457,9 @@ describe('the persistent Claude Code session', () => {
     planner.dispose()
   })
 
-  test('changing tier restarts on the same conversation', async () => {
-    const cli = fakeCli((_t, n) => `{"text":"step ${n}","calls":[]}`)
+  test('changing tier starts the new model on the same conversation, replayed by Kibu', async () => {
+    const sent: string[] = []
+    const cli = fakeCli((t, n) => { sent.push(t); return `{"text":"step ${n}","calls":[]}` })
     const planner = new ClaudeCodePlanner({ bin: 'claude', model: 'sonnet', spawnProcess: cli.spawnProcess })
     planner.seed(task, [])
     planner.setTier('quick')
@@ -449,7 +469,9 @@ describe('the persistent Claude Code session', () => {
     assert.equal(cli.spawned.length, 2)
     const second = cli.spawned[1]!.args
     assert.equal(second[second.indexOf('--model') + 1], 'sonnet')
-    assert.equal(second[second.indexOf('--resume') + 1], 'sess')
+    assert.ok(!second.includes('--resume'), 'nothing is resumed from a transcript on disk')
+    assert.ok(second.includes('--no-session-persistence'))
+    assert.match(sent[1]!, /already under way[\s\S]*step 1/, 'the new model is caught up by Kibu')
     assert.equal(cli.spawned[1]!.env.MAX_THINKING_TOKENS, undefined)
     planner.dispose()
   })

@@ -201,6 +201,29 @@ describe('Jev failure never breaks a task', () => {
     assert.equal(typeof jev.available, 'boolean')
   })
 
+  test('a failure is tried once, not retried, and Jev then rests', async () => {
+    const stub = stubFetch({ error: { message: 'overloaded' } }, 503)
+    const jev = new Jev('test-key', true, 'jev-latest', stub.impl)
+    await jev.routeRequest('please take care of this for me now', false)
+    assert.equal(stub.calls.length, 1, 'a retry would triple the wait on a bad day')
+    // The next decision, even in a later task, goes straight to local rules.
+    const later = new Jev('test-key', true, 'jev-latest', stub.impl)
+    assert.equal(later.available, false)
+    const setup = await later.planSetup('find my tax pdf', 'files', false)
+    assert.equal(setup.source, 'local')
+    assert.equal(stub.calls.length, 1, 'no call while Jev is resting')
+  })
+
+  test('a slow Jev is abandoned in well under two seconds', async () => {
+    const hang = (_url: string, init?: RequestInit): Promise<Response> =>
+      new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)))
+    const jev = new Jev('test-key', true, 'jev-latest', hang)
+    const started = Date.now()
+    const decision = await jev.routeRequest('please take care of this for me now', false)
+    assert.equal(decision.route, 'unclear')
+    assert.ok(Date.now() - started < 2000, `took ${Date.now() - started}ms`)
+  })
+
   test('disabled means disabled', async () => {
     const stub = stubFetch(systemOneResponse({}))
     const jev = new Jev('test-key', false, 'jev-latest', stub.impl)

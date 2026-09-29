@@ -75,6 +75,25 @@ kbd { font: 500 10px/1 var(--mono); color: var(--dim); border: 1px solid var(--h
 .prompt textarea { order: 1; flex: 1; background: none; border: 0; padding: 6px 2px; font: 400 19px/1.4 var(--display); letter-spacing: -.3px; min-width: 0; max-height: 120px; outline: none; border-radius: 0; }
 .prompt textarea:focus-visible { outline: none; }
 .attach-button { order: 2; width: 30px; height: 30px; }
+/* In a chat the bar names the conversation; New chat is the way out of it. */
+.chat-head { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
+.chat-title { flex: 1; min-width: 0; display: grid; gap: 5px; padding: 0 6px 0 2px; cursor: grab; }
+.chat-title strong { font: 500 16px/1.2 var(--display); letter-spacing: -.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-title span { display: flex; align-items: center; font: 500 10.5px/1 var(--mono); color: var(--faint); white-space: nowrap; }
+.chat-title i { width: 3px; height: 3px; border-radius: 50%; background: var(--hair-2); margin: 0 7px; }
+.new-chat { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 7px 0 10px; margin-left: 2px; border-radius: 10px; font-size: 12.5px; font-weight: 600; white-space: nowrap; background: var(--raise-2); box-shadow: inset 0 0 0 1px var(--hair-2); }
+.new-chat:hover:not(:disabled) { color: var(--lime); background: var(--lime-soft); box-shadow: inset 0 0 0 1px #d4ff3a4d; }
+.new-chat kbd { font-size: 9.5px; padding: 2px 4px; border-bottom-width: 1px; }
+.new-chat:hover:not(:disabled) kbd { color: var(--lime); border-color: #d4ff3a4d; }
+/* The reply box: a smaller, boxed composer under the chat it continues. */
+.reply-dock { flex-shrink: 0; position: relative; padding: 2px 12px 12px; }
+.reply-dock .prompt { gap: 4px; padding: 4px 4px 4px 4px; background: var(--raise); border: 1px solid var(--hair-2); border-radius: 14px; transition: border-color 140ms, background 140ms; cursor: text; }
+.reply-dock .prompt:focus-within { border-color: #d4ff3a47; background: var(--raise-2); }
+.prompt.is-reply textarea { font: 400 14px/1.45 var(--sans); letter-spacing: -.1px; padding: 5px 4px; }
+.prompt.is-reply .attach-button { order: 0; width: 30px; height: 30px; }
+.prompt.is-reply .send-button { width: 30px; height: 30px; border-radius: 10px; }
+.reply-dock .palette { top: auto; bottom: calc(100% + 4px); left: 12px; right: 12px; }
+.reply-dock .chips, .reply-dock .composer-error { margin: 6px 6px 0; }
 .context-toggle { order: 3; display: grid; place-items: center; color: var(--dim); border-radius: 8px; width: 30px; height: 30px; flex-shrink: 0; }
 .context-toggle.on { color: var(--lime-ink); background: var(--lime); }
 .send-button { order: 4; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: var(--lime); color: var(--lime-ink); flex-shrink: 0; }
@@ -143,12 +162,6 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 
 /* task */
 .task-page { padding: 4px 4px 0; position: relative; }
-/* A plain answer has no outcome to badge; its two actions sit in the empty
-   corner opposite your message and only show up when you reach for them. */
-.task-toolbar.is-chat { position: absolute; left: 0; top: 2px; margin: 0; opacity: .0; transition: opacity 140ms; z-index: 2; }
-.task-page:hover .task-toolbar.is-chat, .task-toolbar.is-chat:focus-within { opacity: 1; }
-.task-toolbar.is-chat .status { display: none; }
-.task-toolbar { display: flex; align-items: center; gap: 2px; margin-bottom: 12px; }
 /* Status: one chip everywhere — a 5 × 5 dot glyph in Kibu's face language,
    a word in its pixel voice, and a quiet mono detail such as elapsed time. */
 .status { --tone: var(--dim); display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 9px 0 7px; border-radius: 7px; flex-shrink: 0;
@@ -165,16 +178,16 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .dot-glyph.is-working rect { animation: kb-scan 840ms steps(1) infinite; opacity: .16; }
 .dot-glyph.is-ask .lit { animation: kb-blip 1.2s ease-in-out infinite; }
 @keyframes kb-scan { 0%, 14% { opacity: 1; } 15%, 100% { opacity: .16; } }
-.task-toolbar .status { margin-right: auto; }
-.status.is-hidden { visibility: hidden; }
-.retry { margin-left: 0; color: var(--lime); font-weight: 600; }
+.says-head .status { margin-left: auto; }
+.retry { margin-left: 0; color: var(--lime); font-weight: 600; font-family: var(--sans); }
 .reply { display: flex; flex-direction: column; gap: 12px; }
 .asked { align-self: flex-end; max-width: 80%; padding: 8px 13px; font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--raise-2); border-radius: 14px 14px 4px 14px; animation: kb-in 240ms cubic-bezier(.2,.8,.2,1) both; }
 .kibu-turn { display: flex; animation: kb-in 280ms 60ms cubic-bezier(.2,.8,.2,1) both; }
 .kibu-says { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 0 2px; }
 .says-head { display: flex; align-items: center; gap: 8px; font: 500 13px/1 var(--pixel); color: var(--lime); margin-bottom: -2px; }
-.says-head span { font: 500 10.5px/1 var(--mono); color: var(--faint); letter-spacing: .02em; }
-.says-head span:before { content: '·'; margin-right: 8px; }
+.says-head { min-height: 24px; }
+.says-head > span:not(.status) { font: 500 10.5px/1 var(--mono); color: var(--faint); letter-spacing: .02em; }
+.says-head > span:not(.status):before { content: '·'; margin-right: 8px; }
 .says-led { width: 5px; height: 5px; border-radius: 1px; background: var(--lime); }
 .status-failed .says-led { background: var(--red); }
 .status-awaiting_user .says-led, .status-paused .says-led { background: var(--amber); }
@@ -215,10 +228,14 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .said { font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .said.is-short { font: 600 17px/1.35 var(--display); letter-spacing: -.3px; }
 .said.bad { font-size: 12px; color: var(--red); }
-.turn-past { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--hair); opacity: .6; }
+/* Earlier turns of the chat: the same shapes, a step quieter, so the latest
+   answer is the one that reads first. */
+.turn-past { display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px; }
+.turn-past .asked { background: var(--raise); color: #c9cbc6; animation: none; }
+.turn-past .kibu-turn { animation: none; }
+.turn-past .says-head { color: #d4ff3a99; }
 .turn-past .md > * { animation: none; }
-.turn-past .md { font-size: 13.5px; }
-.turn-past .md.is-short p, .turn-past .md p { font: inherit; color: inherit; }
+.turn-past .md, .turn-past .md.is-short p, .turn-past .md > p:first-child { font: 400 13.5px/1.65 var(--sans); letter-spacing: -.05px; color: #a9aba6; }
 .safety-net { font-size: 12px; color: var(--dim); margin-top: -6px; }
 .saying { display: flex; gap: 10px; align-items: center; color: var(--dim); font-size: 13px; }
 .saying>span:nth-child(2) { flex: 1; } .say-actions { display: flex; gap: 4px; }
@@ -254,10 +271,11 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .past { list-style: none; margin: 0; padding: 0; } .history-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; } .history-row:hover { background: var(--hover); }
 .history-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex-shrink: 0; } .history-dot.succeeded { background: var(--lime); } .history-dot.failed { background: var(--red); }
 .past-main { display: flex; flex: 1; gap: 12px; min-width: 0; align-items: baseline; } .past-req { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; } .past-main time { flex-shrink: 0; font: 500 10px var(--mono); color: var(--faint); }
+.past-turns { flex-shrink: 0; font: 500 10px/1 var(--mono); color: var(--faint); padding: 3px 5px; border-radius: 5px; background: var(--raise-2); }
 .past-undo { font: 700 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--lime); padding: 5px 8px; border-radius: 6px; background: var(--lime-soft); }
 .delete-confirm { display: flex; gap: 10px; align-items: center; padding: 9px 11px; border-radius: 10px; margin: 2px 0 10px; background: #ff5a4e14; font-size: 12px; color: #ffb0a8; } .delete-confirm>span { flex: 1; }
 .danger-button { color: #fff; background: var(--red); font: 700 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; padding: 7px 10px; border-radius: 7px; white-space: nowrap; }
-.notice, .driving-line { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-radius: 10px; background: #ffb23e14; color: #ffd79a; font-size: 12px; margin: 2px 2px 10px; } .notice>span { flex: 1; } .driving-line button { margin-left: auto; color: var(--amber); font-weight: 700; }
+.notice, .driving-line { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border-radius: 10px; background: #ffb23e14; color: #ffd79a; font-size: 12px; margin: 2px 2px 10px; } .notice>span { flex: 1; } .notice>.live { flex: 0 0 6px; } .driving-line button { margin-left: auto; color: var(--amber); font-weight: 700; }
 
 
 /* settings */
@@ -278,9 +296,9 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
    just as the shape lands. Everything stays mounted — drafts, scroll and a
    running task survive the round trip. */
 .kibu { transition: border-radius 340ms cubic-bezier(.65,0,.35,1), background 340ms, border-color 340ms, box-shadow 340ms; }
-.kibu>.bar, .kibu>.workspace, .kibu>.statusbar { transition: opacity 200ms ease 120ms, filter 200ms ease 120ms; }
+.kibu>.bar, .kibu>.workspace, .kibu>.reply-dock, .kibu>.statusbar { transition: opacity 200ms ease 120ms, filter 200ms ease 120ms; }
 .kibu.is-docked { border-radius: 23px; cursor: pointer; background: #000; border-color: #ffffff1f; box-shadow: 0 10px 30px -8px #000c, inset 0 1px 0 #ffffff1a; }
-.kibu.is-docked>.bar, .kibu.is-docked>.workspace, .kibu.is-docked>.statusbar { opacity: 0; filter: blur(4px); pointer-events: none; transition: opacity 90ms ease, filter 90ms ease; }
+.kibu.is-docked>.bar, .kibu.is-docked>.workspace, .kibu.is-docked>.reply-dock, .kibu.is-docked>.statusbar { opacity: 0; filter: blur(4px); pointer-events: none; transition: opacity 90ms ease, filter 90ms ease; }
 .island { position: absolute; inset: 0; z-index: 12; display: flex; align-items: center; gap: 10px; padding: 0 16px 0 8px; opacity: 0; pointer-events: none; transform: scale(.96); transition: opacity 90ms ease, transform 90ms ease; color: var(--fg); }
 .kibu.is-docked .island { opacity: 1; pointer-events: auto; transform: none; transition: opacity 220ms ease 200ms, transform 320ms cubic-bezier(.3,1.4,.5,1) 200ms; }
 .island:active:not(:disabled) { transform: scale(.98); }
@@ -406,27 +424,40 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 /* Things that outlive a conversation, in the same rows and hairlines as the
    rest of the panel. The focus timer on top is a tiny screen: the same dots,
    the same clock, that the pet shows on its TV while it runs. */
-.brain { display: flex; flex-direction: column; gap: 10px; padding: 0 2px 6px; cursor: default; }
+.brain { display: flex; flex-direction: column; gap: 12px; padding: 0 2px 6px; cursor: default; }
+.brain-head { display: flex; align-items: center; gap: 6px; margin: 2px 0 0; }
+.brain-head h1 { margin-right: auto; }
+.brain-date { display: flex; align-items: center; margin-right: 8px; font: 500 10.5px/1 var(--mono); color: var(--faint); white-space: nowrap; }
+.brain-date i { width: 3px; height: 3px; border-radius: 50%; background: var(--hair-2); margin: 0 7px; }
 .brain-add { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 30px; padding: 0 12px; background: var(--lime); color: var(--lime-ink); border-radius: 8px; font-weight: 600; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
 .brain-add:disabled { background: var(--raise-2); color: var(--faint); opacity: 1; }
 .text-button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; color: var(--dim); font-size: 12px; white-space: nowrap; }
 .text-button:hover:not(:disabled) { background: var(--hover); color: var(--fg); }
 .text-button[aria-pressed=true] { color: var(--lime); }
 
-.focus { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 8px; border-radius: 12px; background: var(--raise); border: 1px solid var(--hair); }
+.focus { display: flex; align-items: center; gap: 14px; padding: 10px 10px 10px 10px; border-radius: 14px; position: relative; overflow: hidden;
+  background: linear-gradient(180deg, #ffffff07, #ffffff03); border: 1px solid var(--hair); box-shadow: inset 0 1px 0 #ffffff0a; }
+/* How far along, as a hairline of lime along the bottom edge. */
+.focus-progress { position: absolute; left: 0; bottom: 0; height: 2px; width: calc(var(--progress, 0) * 100%); background: var(--lime); box-shadow: 0 0 8px #d4ff3a88; transition: width 1s linear; }
+.focus.is-paused .focus-progress, .focus.is-ringing .focus-progress { background: var(--amber); box-shadow: 0 0 8px #ffb23e88; }
 .focus.is-running { border-color: #d4ff3a2e; }
 .focus.is-paused { border-color: #ffb23e33; }
 .focus.is-ringing { border-color: #ffb23e66; animation: kb-ring-glow 1.4s ease-in-out infinite; }
 @keyframes kb-ring-glow { 50% { box-shadow: 0 0 0 3px #ffb23e1a; } }
-.focus-screen { display: grid; place-items: center; min-width: 76px; height: 38px; padding: 0 9px; border-radius: 8px; flex-shrink: 0;
+.focus-screen { display: grid; place-items: center; min-width: 84px; height: 44px; padding: 0 10px; border-radius: 9px; flex-shrink: 0;
   background: repeating-linear-gradient(0deg, #ffffff06 0 1px, transparent 1px 3px), radial-gradient(120% 120% at 50% 40%, #121609, #050506); box-shadow: inset 0 0 0 1px #ffffff10, inset 0 2px 6px #000c; }
-.focus-copy { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.focus-copy { flex: 1; min-width: 0; display: grid; gap: 4px; }
 .focus-copy strong { font: 500 14px/1.3 var(--pixel); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .focus-copy span { font-size: 11.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .focus-copy input { background: none; border: 0; border-radius: 0; padding: 0; font: 500 14px/1.3 var(--pixel); }
 .focus-copy input:focus-visible { outline: none; box-shadow: 0 1px 0 var(--lime); }
-.focus-minutes { display: flex; align-items: center; gap: 5px; font: 11px var(--mono); color: var(--faint); }
-.focus-minutes input { width: 52px; padding: 5px 6px; text-align: center; font: 12px var(--mono); border-radius: 7px; }
+.focus-presets { display: flex; align-items: center; gap: 4px; }
+.focus-presets button { height: 22px; min-width: 30px; padding: 0 7px; text-align: center; border-radius: 6px; font: 500 11px/1 var(--mono); color: var(--dim); background: var(--raise-2); }
+.focus-presets button:hover { color: var(--fg); background: var(--hair-2); }
+.focus-presets button[aria-pressed=true] { color: var(--lime); background: var(--lime-soft); box-shadow: inset 0 0 0 1px #d4ff3a40; }
+.focus-presets label { display: flex; align-items: center; gap: 5px; margin-left: 4px; font: 500 10.5px var(--mono); color: var(--faint); }
+.focus-presets input { width: 46px; height: 22px; padding: 0 4px; text-align: center; font: 11px var(--mono); color: var(--dim); border-radius: 6px; background: none; border: 1px dashed var(--hair-2); }
+.focus-presets input:focus { color: var(--fg); border-style: solid; border-color: #d4ff3a55; outline: none; }
 
 .dot-clock { display: block; overflow: visible; }
 .dot-clock .unlit { fill: #fff; opacity: .07; }
@@ -441,30 +472,44 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .brain-due { margin: 0; }
 .brain-due button { margin-left: auto; color: var(--amber); font-weight: 600; }
 
-.brain-bar { display: flex; align-items: center; gap: 8px; }
-.brain-tabs { flex: 1; min-width: 0; display: flex; gap: 2px; padding: 3px; overflow-x: auto; scrollbar-width: none; background: #00000033; border: 1px solid var(--hair); border-radius: 10px; }
-.brain-tabs button { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; white-space: nowrap; font-size: 12px; color: var(--dim); border-radius: 7px; }
-.brain-tabs button:hover:not([aria-pressed=true]) { color: var(--fg); background: var(--hover); }
-.brain-tabs button[aria-pressed=true] { color: var(--fg); background: var(--raise-2); box-shadow: inset 0 0 0 1px var(--hair-2); }
+/* Sections as a hairline tab strip, with search tucked in at its end. */
+.brain-bar { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--hair); margin-top: 2px; }
+.brain-tabs { flex: 1; min-width: 0; display: flex; gap: 14px; padding: 0 4px; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); }
+.brain-tabs button { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 34px; white-space: nowrap; font-size: 12.5px; color: var(--dim); }
+.brain-tabs button:hover { color: var(--fg); }
+.brain-tabs button[aria-pressed=true] { color: var(--fg); }
+.brain-tabs button[aria-pressed=true]:after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px 2px 0 0; background: var(--lime); }
+.brain-tabs button:active:not(:disabled) { transform: none; }
 .tab-count { font: 500 10px/1 var(--mono); color: var(--faint); }
 .brain-tabs button[aria-pressed=true] .tab-count { color: var(--lime); }
-
-.brain-search { display: flex; align-items: center; gap: 8px; padding: 0 4px 0 10px; color: var(--faint); border-bottom: 1px solid var(--hair); }
-.brain-search input { flex: 1; min-width: 60px; border: 0; background: none; border-radius: 0; padding: 8px 0; font-size: 13px; }
+.brain-search { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; margin-bottom: 4px; border-radius: 8px; color: var(--faint); background: var(--raise); box-shadow: inset 0 0 0 1px var(--hair); cursor: text; transition: box-shadow 140ms, color 140ms; }
+.brain-search input { width: 64px; border: 0; background: none; border-radius: 0; padding: 0; font-size: 12px; transition: width 180ms cubic-bezier(.2,.8,.2,1); }
+.brain-search input:focus, .brain-search input:not(:placeholder-shown) { width: 140px; }
 .brain-search input:focus-visible { outline: none; }
-.brain-search:focus-within { color: var(--lime); border-color: #d4ff3a44; }
-.brain-search select { max-width: 150px; font-size: 11.5px; padding: 4px 6px; }
+.brain-search:focus-within { color: var(--lime); box-shadow: inset 0 0 0 1px #d4ff3a44; }
+.brain-bar select { max-width: 130px; margin-bottom: 4px; font-size: 11.5px; padding: 4px 6px; }
 .brain-error { color: var(--red); font-size: 12px; }
 
-.brain-items { display: flex; flex-direction: column; }
-.brain-card { padding: 9px 10px; border-radius: 10px; animation: kb-in 220ms cubic-bezier(.2,.8,.2,1) both; }
+.brain-items { display: flex; flex-direction: column; gap: 6px; margin-top: -4px; }
+.brain-group { display: flex; flex-direction: column; }
+.brain-group .rows-label { display: flex; align-items: center; gap: 7px; padding: 10px 10px 6px; }
+.brain-group .rows-label span { color: var(--faint); opacity: .7; }
+.brain-group.is-overdue .rows-label { color: var(--amber); }
+/* A row: a glyph tile (or a checkbox) on the left, everything else lined up
+   with the title — the same shape as the rows on the home screen. */
+.brain-card { display: grid; grid-template-columns: 28px 1fr; column-gap: 12px; align-items: start; padding: 8px 10px; border-radius: 10px; animation: kb-in 220ms cubic-bezier(.2,.8,.2,1) both; }
 .brain-card + .brain-card { box-shadow: 0 -1px 0 var(--hair); border-top-left-radius: 0; border-top-right-radius: 0; }
 .brain-card:hover, .brain-card:focus-within { background: var(--hover); }
-.brain-card-top { display: flex; align-items: center; gap: 10px; min-height: 24px; }
-.brain-check { width: 16px; height: 16px; border: 1.5px solid var(--hair-2); border-radius: 5px; display: grid; place-items: center; flex-shrink: 0; color: var(--lime-ink); }
-.brain-check:hover:not(:disabled) { border-color: var(--lime); }
-.brain-glyph { width: 16px; display: grid; place-items: center; color: var(--faint); flex-shrink: 0; }
-.brain-title { flex: 1; min-width: 0; font-size: 13.5px; letter-spacing: -.1px; overflow-wrap: anywhere; }
+.brain-card:hover + .brain-card, .brain-card:focus-within + .brain-card { box-shadow: none; }
+.brain-main { min-width: 0; }
+.brain-card-top { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.brain-check { justify-self: center; margin-top: 5px; width: 18px; height: 18px; border: 1.5px solid var(--hair-2); border-radius: 6px; display: grid; place-items: center; flex-shrink: 0; color: var(--lime-ink); }
+.brain-check:hover:not(:disabled) { border-color: var(--lime); background: var(--lime-soft); }
+.brain-glyph { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--dim); background: var(--raise-2); flex-shrink: 0; transition: background 120ms, color 120ms; }
+.brain-card:hover .brain-glyph { color: var(--lime-ink); background: var(--lime); }
+.kind-tracker .brain-glyph { color: var(--lime); }
+.kind-project .brain-glyph, .kind-session .brain-glyph { color: var(--ice); }
+.brain-title { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; letter-spacing: -.1px; overflow-wrap: anywhere; }
 .brain-title:hover { color: var(--lime); }
 .brain-kind { font: 500 9.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--faint); }
 .brain-card-top { position: relative; }
@@ -475,25 +520,29 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .is-done .brain-title { text-decoration: line-through; text-decoration-color: var(--faint); color: var(--dim); }
 .is-done .brain-check { background: var(--lime); border-color: var(--lime); }
 .is-overdue .brain-check { border-color: var(--amber); }
-.brain-body { margin: 3px 0 0 26px; font-size: 12.5px; line-height: 1.55; color: #a9aba6; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; user-select: text; cursor: text; }
-.brain-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 5px 0 0 26px; font: 500 10.5px var(--mono); color: var(--faint); }
+.brain-body { margin: 1px 0 0; font-size: 12.5px; line-height: 1.55; color: #a9aba6; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; user-select: text; cursor: text; }
+.brain-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 5px 0 0; font: 500 10.5px var(--mono); color: var(--faint); }
+.brain-meta > * { display: inline-flex; align-items: center; gap: 5px; }
 .brain-meta .warn { color: var(--amber); }
-.brain-sources { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0 0 26px; }
+.brain-sources { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0 2px; }
 .brain-sources .chip { display: inline-flex; align-items: center; gap: 5px; color: var(--ice); max-width: 220px; }
 .brain-sources .chip:hover { background: var(--hair-2); }
-.brain-more { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0 20px; }
+.brain-more { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0 -7px; }
 .brain-more button { font: 600 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--lime); padding: 6px 7px; border-radius: 6px; }
 .brain-more button:hover:not(:disabled) { background: var(--lime-soft); }
-.tracker-days { display: flex; align-items: center; gap: 4px; margin: 8px 0 0 26px; }
-.tracker-days>span { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--raise-2); font: 500 9.5px var(--mono); color: var(--faint); }
-.tracker-days>span.checked { background: var(--lime); color: var(--lime-ink); }
+.tracker-days { display: flex; align-items: center; gap: 4px; margin: 8px 0 2px; }
+.tracker-days>span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--raise-2); font: 500 9.5px var(--mono); color: var(--faint); }
+.tracker-days>span.is-today { box-shadow: inset 0 0 0 1px var(--hair-2); color: var(--dim); }
+.tracker-days>span.checked { background: var(--lime); color: var(--lime-ink); box-shadow: 0 2px 0 #6f8a12; }
 .tracker-days .text-button { margin-left: auto; }
 
-.brain-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 22px 10px 8px; gap: 6px; }
+.brain-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18px 10px 6px; gap: 6px; }
+.starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; }
+.starters button, .capture-actions button { font-size: 12px; font-weight: 500; border: 1px solid var(--hair-2); border-radius: 9px; padding: 6px 11px; }
+.starters button:hover, .capture-actions button:hover { background: var(--hover); border-color: #d4ff3a55; color: var(--lime); }
 .brain-empty .kb-sprite { margin-bottom: 4px; }
 .brain-empty strong { font: 500 16px/1.2 var(--pixel); }
 .brain-empty p { font-size: 12px; color: var(--dim); }
-.brain-empty .text-button { color: var(--lime); margin-top: 2px; }
 .brain-footnote { font: 500 10px var(--mono); text-align: center; color: var(--faint); padding-top: 6px; }
 
 .brain-editor { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: var(--raise); border: 1px solid var(--hair-2); animation: kb-in 200ms cubic-bezier(.2,.8,.2,1) both; }
@@ -509,9 +558,7 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .editor-source { display: flex; justify-content: space-between; align-items: center; gap: 8px; font: 11px var(--mono); color: var(--ice); }
 .editor-source span { overflow-wrap: anywhere; }
 .capture-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 4px 8px; }
-.capture-actions button { font-size: 12px; font-weight: 500; border: 1px solid var(--hair-2); border-radius: 9px; padding: 6px 11px; }
-.capture-actions button:hover { background: var(--hover); border-color: #d4ff3a55; color: var(--lime); }
-@media(max-width:460px) { .focus { gap: 9px; } .focus-screen { min-width: 0; padding: 0 7px; } .editor-row { flex-wrap: wrap; } }
+@media(max-width:460px) { .focus { gap: 9px; } .focus-screen { min-width: 0; padding: 0 7px; } .editor-row { flex-wrap: wrap; } .focus-presets label { display: none; } .brain-date { display: none; } .new-chat span, .new-chat kbd { display: none; } .new-chat { padding: 0 8px; } }
 
 /* ---------------------------------------------------------------- timer mode: the TV */
 /* The pebble ducks and fades; a small CRT pops up in its place, antennae

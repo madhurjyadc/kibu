@@ -74,6 +74,16 @@ function jevCost(inputTokens: number): number {
   return (inputTokens * JEV_INPUT_PER_MTOK) / 1_000_000
 }
 
+/**
+ * How long Jev is left alone after a call fails. Every Jev decision has a
+ * local fallback, so while the service is struggling the right move is to
+ * stop asking it: a failed call costs the full timeout, and a task makes
+ * several of them in a row before the planner even starts.
+ */
+const JEV_COOLDOWN_MS = 60_000
+/** When each transport may be tried again. Keyed by transport so tests with their own fetch do not trip each other. */
+const downUntil = new Map<unknown, number>()
+
 /** Ordered least to most cautious. Used to stop Jev relaxing a local verdict. */
 const CAUTION_ORDER: ProgressAction[] = ['continue', 'reobserve', 'replan', 'ask', 'abort']
 
@@ -84,8 +94,14 @@ function atLeastAsCautious(local: ProgressAction, proposed: ProgressAction): Pro
 export { choice, noul, score }
 
 export class Jev {
-  private client: TypeSafeClient | null = null
+  private connected: TypeSafeClient | null = null
+  private readonly transport: unknown
   readonly metrics: JevMetrics = { calls: [], totalUsd: 0, totalLatencyMs: 0, overrides: 0 }
+
+  /** The client, or null while Jev is cooling down after a failure. */
+  private get client(): TypeSafeClient | null {
+    return (downUntil.get(this.transport) ?? 0) > Date.now() ? null : this.connected
+  }
 
   constructor(
     apiKey: string | null,
@@ -94,21 +110,35 @@ export class Jev {
     /** Transport override. Used to exercise Jev's behaviour without a network. */
     fetchImpl?: Fetch
   ) {
+    this.transport = fetchImpl ?? 'network'
     if (!enabled) return
     try {
       // The constructor throws when no key is configured; falling back to
       // local rules is correct, and must not take the task down.
-      this.client = new TypeSafeClient({
+      const client = new TypeSafeClient({
         ...(apiKey ? { apiKey } : {}),
         defaultModel: model,
         ...(fetchImpl ? { fetch: fetchImpl } : {}),
-        // Jev answers in ~100ms; a slow call means something is wrong and the
-        // loop is better off falling back to local rules than waiting.
-        timeout: 4000,
+        // Jev answers in about half a second. A slow call means something is
+        // wrong, and the loop is better off on local rules than waiting: with
+        // the SDK's default two retries, one bad call used to cost ~13s.
+        timeout: 1500,
+        retry: { maxRetries: 0 },
         logLevel: 'off'
       })
+      const systemOne = client.systemOne.bind(client)
+      const transport = this.transport
+      client.systemOne = (async (...args: Parameters<typeof systemOne>) => {
+        try {
+          return await systemOne(...args)
+        } catch (err) {
+          downUntil.set(transport, Date.now() + JEV_COOLDOWN_MS)
+          throw err
+        }
+      }) as typeof client.systemOne
+      this.connected = client
     } catch {
-      this.client = null
+      this.connected = null
     }
   }
 
@@ -292,15 +322,11 @@ export class Jev {
    * work stops going well. Without Jev the same answers come from keywords.
    */
   async planSetup(request: string, route: string, hasDroppedPaths: boolean): Promise<PlanSetup> {
-    const local = localPlanSetup(request, route, hasDroppedPaths)
-    if (!this.client) {
-      this.record('plan_setup', false, 0, 0, 0, describeSetup(local), 1)
-      return local
-    }
+    const client = this.client
     const started = Date.now()
     const family = (question: string) => noul(question, { true: 'Yes, this is needed.', false: 'No.' })
-    try {
-      const { answers, usage } = await this.client.systemOne({
+    const pending = client
+      ? client.systemOne({
         state: { request, filesDroppedOntoAssistant: hasDroppedPaths, today: new Date().toDateString() },
         questions: {
           files: family('Does this involve files or folders on the computer?'),
@@ -328,33 +354,41 @@ export class Jev {
             involved: 'Several steps across apps or sites, working something out, or writing something substantial.'
           })
         }
-      })
-      const yes = (a: { noul?: number } | undefined, fallback: boolean): boolean =>
-        typeof a?.noul === 'number' ? a.noul > 0.5 : fallback
-      const families = FAMILY_KEYS.filter((k) => yes(answers[k] as { noul?: number }, local.families.includes(k)))
-      const setup: PlanSetup = {
-        // A family local keywords are sure of stays even if Jev disagrees:
-        // hiding a tool the request plainly names can only cost a replan.
-        families: [...new Set([...families, ...local.families])],
-        context: {
-          selection: yes(answers.selection as { noul?: number }, local.context.selection),
-          tab: yes(answers.tab as { noul?: number }, local.context.tab),
-          finder: yes(answers.finder as { noul?: number }, local.context.finder),
-          // The clipboard can hold anything, passwords included: only read it
-          // when the words actually point at it.
-          clipboard: local.context.clipboard && yes(answers.clipboard as { noul?: number }, true)
-        },
-        quick: (answers.effort as { choice?: string } | undefined)?.choice === 'quick',
-        ownBrowser: yes(answers.ownBrowser as { noul?: number }, local.ownBrowser),
-        start: (((answers.start as { choice?: string } | undefined)?.choice) as PlanSetup['start'] | undefined) ?? local.start,
-        source: 'jev'
-      }
-      this.record('plan_setup', true, Date.now() - started, jevCost(usage.input_tokens), usage.input_tokens, describeSetup(setup), 1)
-      return setup
-    } catch {
+      }).catch(() => null)
+      : null
+    const local = localPlanSetup(request, route, hasDroppedPaths)
+    if (!pending) {
+      this.record('plan_setup', false, 0, 0, 0, describeSetup(local), 1)
+      return local
+    }
+    const reply = await pending
+    if (!reply) {
       this.record('plan_setup', true, Date.now() - started, 0, 0, `${describeSetup(local)} (fallback)`, 0)
       return local
     }
+    const { answers, usage } = reply
+    const yes = (a: { noul?: number } | undefined, fallback: boolean): boolean =>
+      typeof a?.noul === 'number' ? a.noul > 0.5 : fallback
+    const families = FAMILY_KEYS.filter((k) => yes(answers[k] as { noul?: number }, local.families.includes(k)))
+    const setup: PlanSetup = {
+      // A family local keywords are sure of stays even if Jev disagrees:
+      // hiding a tool the request plainly names can only cost a replan.
+      families: [...new Set([...families, ...local.families])],
+      context: {
+        selection: yes(answers.selection as { noul?: number }, local.context.selection),
+        tab: yes(answers.tab as { noul?: number }, local.context.tab),
+        finder: yes(answers.finder as { noul?: number }, local.context.finder),
+        // The clipboard can hold anything, passwords included: only read it
+        // when the words actually point at it.
+        clipboard: local.context.clipboard && yes(answers.clipboard as { noul?: number }, true)
+      },
+      quick: (answers.effort as { choice?: string } | undefined)?.choice === 'quick',
+      ownBrowser: yes(answers.ownBrowser as { noul?: number }, local.ownBrowser),
+      start: (((answers.start as { choice?: string } | undefined)?.choice) as PlanSetup['start'] | undefined) ?? local.start,
+      source: 'jev'
+    }
+    this.record('plan_setup', true, Date.now() - started, jevCost(usage.input_tokens), usage.input_tokens, describeSetup(setup), 1)
+    return setup
   }
 
   /* ---------------------------------------------------------------- *

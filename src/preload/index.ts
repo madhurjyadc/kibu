@@ -56,6 +56,7 @@ const bridge: KibuBridge & { getPathForFile(file: File): string } = {
   setJevKey: (key) => ipcRenderer.invoke(IPC.secretsSetJev, key),
   hasJevKey: () => ipcRenderer.invoke(IPC.secretsStatusJev),
   hasClaudeCode: () => ipcRenderer.invoke(IPC.claudeCodeStatus),
+  codingApps: () => ipcRenderer.invoke(IPC.codingAppsStatus),
   canWork: () => ipcRenderer.invoke(IPC.canWork),
   runBench: () => ipcRenderer.invoke(IPC.benchRun),
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),

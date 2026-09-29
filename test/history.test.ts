@@ -49,3 +49,42 @@ test('clear history keeps active tasks and deletion remains gone after reopening
     assert.equal(store.listTasks().length, 1)
   } finally { store.close(); await rm(dir, { recursive: true, force: true }) }
 })
+
+test('a chat is stored as one conversation: listed once, read back whole, deleted whole', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kibu-history-chat-'))
+  const store = new Store(dir)
+  try {
+    const at = (t: TaskState, n: number, extra: Partial<TaskState>): TaskState => ({ ...t, createdAt: n, updatedAt: n, actions: [], ...extra })
+    const first = at(task('c1', join(dir, 'x')), 1, { request: 'Organize my Downloads' })
+    const second = at(task('c2', join(dir, 'x')), 2, { request: 'now the Desktop', replyTo: 'c1', conversationId: 'c1' })
+    const other = at(task('solo', join(dir, 'x')), 3, { request: 'what time is it in Tokyo' })
+    for (const t of [first, second, other]) store.saveTask(t)
+
+    const rows = store.listTasks(10)
+    assert.equal(rows.length, 2, 'one row per chat, not per message')
+    const chat = rows.find((r) => r.turns === 2)!
+    assert.equal(chat.request, 'Organize my Downloads', 'named by how it began')
+    assert.equal(chat.id, 'c2', 'opens at its latest turn')
+
+    assert.deepEqual(store.conversationOf('c2').map((t) => t.id), ['c1', 'c2'])
+    assert.deepEqual(store.deleteConversation('c2').sort(), ['c1', 'c2'])
+    assert.equal(store.getTask('c1'), null)
+    assert.ok(store.getTask('solo'))
+  } finally { store.close(); await rm(dir, { recursive: true, force: true }) }
+})
+
+test('a database from before chats were stored opens with each old task as its own chat', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'kibu-history-migrate-'))
+  const { DatabaseSync } = await import('node:sqlite')
+  const old = new DatabaseSync(join(dir, 'kibu.db'))
+  old.exec(`CREATE TABLE tasks (id TEXT PRIMARY KEY, request TEXT NOT NULL, status TEXT NOT NULL, headline TEXT,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, state_json TEXT NOT NULL)`)
+  const legacy = task('legacy', join(dir, 'x'))
+  old.prepare('INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?)').run('legacy', legacy.request, 'succeeded', 'Found', 1, 1, JSON.stringify(legacy))
+  old.close()
+  const store = new Store(dir)
+  try {
+    const rows = store.listTasks(10)
+    assert.deepEqual(rows.map((r) => [r.id, r.turns]), [['legacy', 1]])
+  } finally { store.close(); await rm(dir, { recursive: true, force: true }) }
+})

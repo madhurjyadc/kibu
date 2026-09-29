@@ -194,6 +194,10 @@ export interface TaskState {
   statusLine: string
   createdAt: number
   updatedAt: number
+  /** The turn this one replied to, so a conversation can be put back together. */
+  replyTo?: string
+  /** The chat this turn belongs to: the id of its first turn. Absent means it started one. */
+  conversationId?: string
   /** Set when status is 'awaiting_user'. */
   question?: UserQuestion
   /** Set when status is terminal. */

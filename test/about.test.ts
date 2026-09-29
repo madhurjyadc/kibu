@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { isAboutKibu, describeSelf } from '../src/runtime/loop/about.js'
+import { isAboutKibu, isAboutModel, describeModels, describeSelf } from '../src/runtime/loop/about.js'
+import { DEFAULT_MODEL_CONFIG } from '../src/shared/protocol.js'
 import type { OsAdapter } from '../src/os/adapter.js'
 
 function os(supported: string[]): OsAdapter {
@@ -52,4 +53,18 @@ test('it says when it has no way to think at all', () => {
   assert.ok(unset.evidence.some((e) => e.label === 'Not set up yet'))
   const ready = describeSelf(os(['window.inspect']), true, true)
   assert.ok(!ready.evidence.some((e) => e.label === 'Not set up yet'))
+})
+
+test('"which model are you" is answered from configuration, not by a model', () => {
+  for (const q of ['which model u using', 'what model are you?', 'what ai r u', 'are you chatgpt?', 'hey which llm do you run on']) {
+    assert.equal(isAboutModel(q), true, q)
+  }
+  for (const q of ['what model should I use for embeddings', 'what model do you recommend for my laptop', 'find the 3d model files on my desktop']) {
+    assert.equal(isAboutModel(q), false, q)
+  }
+  const cc = describeModels('claude-code', DEFAULT_MODEL_CONFIG, true)
+  assert.match(cc.headline, /Claude Code/)
+  assert.match(cc.headline, /Haiku for quick answers, Sonnet for anything I do on your Mac/)
+  assert.match(describeModels('api', DEFAULT_MODEL_CONFIG, true).headline, /Claude Opus 5\b/)
+  assert.match(describeModels(null, DEFAULT_MODEL_CONFIG, false).headline, /No thinking model/)
 })

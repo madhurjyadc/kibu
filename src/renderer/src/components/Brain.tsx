@@ -26,30 +26,73 @@ function localTime(ms: number | null | undefined): string {
   const date = new Date(ms)
   return new Date(ms - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 }
-function dateLabel(ms: number): string { return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) }
+/** Times near now read as a person would say them; the rest as a date. */
+function dateLabel(ms: number, now: number): string {
+  const time = new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  const days = Math.round((new Date(ms).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 86400000)
+  if (days === 0) return `Today ${time}`
+  if (days === 1) return `Tomorrow ${time}`
+  if (days === -1) return `Yesterday ${time}`
+  return new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
 
 const ICON: Record<BrainKind, IconName> = { note: 'rename', task: 'check', reminder: 'clock', project: 'folder', bookmark: 'pin', session: 'expand', tracker: 'spark' }
+type Tab = BrainKind | 'today' | 'archive'
 
-export function Brain({ state, onCompose }: { state: BrainSnapshot; onCompose: (text: string) => void }): React.JSX.Element {
+/** What an empty section offers to do instead: a sentence to hand Kibu. */
+const STARTERS: Record<Tab, [string, string][]> = {
+  today: [['Remind me…', 'Remind me to '], ['Add a task', 'Add a task: '], ['Track a habit', 'Track reading daily']],
+  note: [['Write a note', 'Note: ']],
+  task: [['Add a task', 'Add a task: ']],
+  reminder: [['Remind me…', 'Remind me to ']],
+  project: [['Start a project', 'Start a project called ']],
+  bookmark: [['Save a link', 'Save this link for later: ']],
+  session: [['Save where I am', 'Save where I am. My next step is ']],
+  tracker: [['Track a habit', 'Track reading daily']],
+  archive: []
+}
+/** Groups read top to bottom in this order; unnamed is the plain list. */
+const GROUPS = ['Overdue', 'Later today', 'Tasks', 'Habits', '', 'Done']
+
+export function Brain({ state, onCompose, onBack }: { state: BrainSnapshot; onCompose: (text: string) => void; onBack: () => void }): React.JSX.Element {
   const now = useNow()
-  const [tab, setTab] = useState<BrainKind | 'today' | 'archive'>('today')
+  const [tab, setTab] = useState<Tab>('today')
   const [query, setQuery] = useState('')
   const [project, setProject] = useState('')
   const [editing, setEditing] = useState<BrainItem | BrainDraft | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // With nothing kept there are no sections to pick from, so land back on Today.
+  useEffect(() => { if (!state.items.length) setTab('today') }, [state.items.length])
   const projects = state.items.filter(i => i.kind === 'project' && i.status === 'open')
   const due = dueItems(state, now)
   const endToday = new Date(now); endToday.setHours(23, 59, 59, 999)
   const isToday = (i: BrainItem): boolean => i.status === 'open' && (i.kind === 'task' || i.kind === 'tracker' || (i.dueAt !== null && i.dueAt <= endToday.getTime()))
-  const count = (key: typeof tab): number => state.items.filter(i => key === 'archive' ? i.status === 'archived' : key === 'today' ? isToday(i) : i.status === 'open' && i.kind === key).length
+  const count = (key: Tab): number => state.items.filter(i => key === 'archive' ? i.status === 'archived' : key === 'today' ? isToday(i) : i.status === 'open' && i.kind === key).length
+  // Only sections with something in them: nine tabs for an empty workspace is a form, not a place.
+  const sections = ([['today', 'Today'], ...kinds, ['archive', 'Archive']] as [Tab, string][])
+    .map(([key, name]) => ({ key, name, n: count(key) }))
+    .filter(({ key, n }) => key === 'today' || key === tab || n > 0 || (key !== 'archive' && state.items.some(i => i.kind === key && i.status !== 'archived')))
+  const searching = !!query.trim()
+  // Groups already say what things are; only a flat mixed list needs the kind spelled out.
+  const mixed = tab === 'archive' || searching
   const visible = state.items.filter(i => {
     if (tab === 'archive' ? i.status !== 'archived' : i.status === 'archived') return false
     if (project && i.projectId !== project && i.id !== project) return false
-    if (query) return `${i.title} ${i.body} ${i.sources.map(s => s.label).join(' ')}`.toLowerCase().includes(query.toLowerCase())
+    if (searching) return `${i.title} ${i.body} ${i.sources.map(s => s.label).join(' ')}`.toLowerCase().includes(query.trim().toLowerCase())
     if (tab === 'today') return isToday(i)
     return tab === 'archive' || i.kind === tab
   }).sort((a, b) => Number(a.status === 'done') - Number(b.status === 'done') || (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity) || b.updatedAt - a.updatedAt)
+  const groupOf = (i: BrainItem): string => {
+    if (tab === 'archive' || searching) return ''
+    if (i.status === 'done') return 'Done'
+    if (i.dueAt !== null && i.dueAt <= now) return 'Overdue'
+    if (tab !== 'today') return ''
+    if (i.dueAt !== null && i.dueAt <= endToday.getTime()) return 'Later today'
+    return i.kind === 'tracker' ? 'Habits' : 'Tasks'
+  }
+  const groups = GROUPS.map(label => ({ label, items: visible.filter(i => groupOf(i) === label) })).filter(g => g.items.length)
+  const open = state.items.filter(i => i.status === 'open').length
   async function act(request: BrainRequest): Promise<void> {
     setBusy(true); setError('')
     try { await window.kibu.brainRequest(request) } catch (e) { setError(e instanceof Error ? e.message : 'Could not save that.') } finally { setBusy(false) }
@@ -59,48 +102,67 @@ export function Brain({ state, onCompose }: { state: BrainSnapshot; onCompose: (
     catch (e) { setError(e instanceof Error ? e.message : 'Could not open source.') }
   }
   return <section className="brain" aria-label="Kibu workspace">
+    <header className="brain-head">
+      <button className="icon-button" aria-label="Back home" onClick={onBack}><Icon name="back" size={17} /></button>
+      <h1>Workspace</h1>
+      <span className="brain-date">{new Date(now).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}{open > 0 && <><i />{open} open</>}</span>
+      <button className="brain-add" onClick={() => setEditing({ kind: tab === 'today' || tab === 'archive' ? 'note' : tab, title: '', projectId: project || null })}><Icon name="plus" size={14} />New</button>
+    </header>
     <Focus timer={state.timer} now={now} busy={busy} act={act} />
     {due.length > 0 && <div className="notice brain-due"><span className="live" /><span>{due.length} reminder{due.length === 1 ? '' : 's'} waiting</span><button onClick={() => { setTab('today'); setQuery(''); setProject('') }}>Review</button></div>}
-    <div className="brain-bar">
-      <nav className="brain-tabs" aria-label="Workspace sections">{([['today', 'Today'], ...kinds, ['archive', 'Archive']] as [typeof tab, string][]).map(([key, name]) => { const n = count(key); return <button key={key} aria-pressed={tab === key} onClick={() => { setTab(key); setQuery(''); setEditing(null) }}>{name}{n > 0 && <span className="tab-count" aria-hidden="true">{n}</span>}</button> })}</nav>
-      <button className="brain-add" onClick={() => setEditing({ kind: tab === 'today' || tab === 'archive' ? 'note' : tab, title: '', projectId: project || null })}><Icon name="plus" size={14} />New</button>
-    </div>
-    <div className="brain-search"><Icon name="search" size={14} /><input aria-label="Search workspace" placeholder="Find something you kept…" value={query} onChange={e => setQuery(e.target.value)} />{projects.length > 0 && <select aria-label="Filter by project" value={project} onChange={e => setProject(e.target.value)}><option value="">All projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}</div>
+    {state.items.length > 0 && <div className="brain-bar">
+      <nav className="brain-tabs" aria-label="Workspace sections">{sections.map(({ key, name, n }) => <button key={key} aria-pressed={tab === key && !searching} onClick={() => { setTab(key); setQuery(''); setEditing(null) }}>{name}{n > 0 && <span className="tab-count" aria-hidden="true">{n}</span>}</button>)}</nav>
+      <label className="brain-search"><Icon name="search" size={14} /><input aria-label="Search workspace" placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery('') } }} /></label>
+      {projects.length > 0 && <select aria-label="Filter by project" value={project} onChange={e => setProject(e.target.value)}><option value="">All projects</option>{projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}</select>}
+    </div>}
     {error && <p className="brain-error" role="alert">{error}</p>}
     {editing && <BrainEditor key={'id' in editing ? editing.id : 'new'} initial={editing} projects={projects} onCancel={() => setEditing(null)} onSave={async item => { await window.kibu.brainRequest('id' in editing ? { op: 'update', id: editing.id, changes: item } : { op: 'create', item }); setEditing(null) }} />}
-    <div className="brain-items">
-      {visible.map(item => {
-        const overdue = item.status === 'open' && item.dueAt !== null && item.dueAt <= now
-        const checkable = item.kind === 'task' || item.kind === 'reminder'
-        const projectName = item.projectId ? state.items.find(p => p.id === item.projectId)?.title : undefined
-        return <article key={item.id} className={`brain-card ${item.status === 'done' ? 'is-done' : ''} ${overdue ? 'is-overdue' : ''}`}>
-          <div className="brain-card-top">
+    {groups.length > 0 && <div className="brain-items">
+      {groups.map(group => <div className={`brain-group ${group.label === 'Overdue' ? 'is-overdue' : ''}`} key={group.label || 'all'}>
+        {group.label && <p className="rows-label">{group.label}<span>{group.items.length}</span></p>}
+        {group.items.map(item => {
+          const overdue = item.status === 'open' && item.dueAt !== null && item.dueAt <= now
+          const checkable = item.kind === 'task' || item.kind === 'reminder'
+          const projectName = item.projectId ? state.items.find(p => p.id === item.projectId)?.title : undefined
+          const doneToday = item.checks.includes(dayKey(now))
+          return <article key={item.id} className={`brain-card kind-${item.kind} ${item.status === 'done' ? 'is-done' : ''} ${overdue ? 'is-overdue' : ''}`}>
             {checkable
               ? <button className="brain-check" aria-label={`${item.status === 'done' ? 'Reopen' : 'Complete'} ${item.title}`} disabled={busy} onClick={() => void act({ op: item.status === 'done' ? 'reopen' : 'complete', id: item.id })}>{item.status === 'done' && <Icon name="check" size={12} />}</button>
-              : <span className="brain-glyph"><Icon name={ICON[item.kind]} size={13} /></span>}
-            <button className="brain-title" onClick={() => setEditing(item)}>{item.title}</button>
-            <span className="brain-kind">{item.kind === 'bookmark' ? 'saved' : item.kind}</span>
-            <span className="brain-actions">
-              <button onClick={() => setEditing(item)}>Edit</button>
-              <button disabled={busy} onClick={() => void act({ op: item.status === 'archived' ? 'reopen' : 'archive', id: item.id })}>{item.status === 'archived' ? 'Restore' : 'Archive'}</button>
-            </span>
-          </div>
-          {item.body && <p className="brain-body">{item.body}</p>}
-          {(projectName || item.dueAt !== null || item.estimateMinutes) && <div className="brain-meta">{projectName && <span>{projectName}</span>}{item.dueAt !== null && <time className={overdue ? 'warn' : ''} dateTime={new Date(item.dueAt).toISOString()}>{dateLabel(item.dueAt)}{item.repeat !== 'none' ? ` · ${item.repeat}` : ''}</time>}{item.estimateMinutes && <span>{item.estimateMinutes} min</span>}</div>}
-          {item.sources.length > 0 && <div className="brain-sources">{item.sources.map((source, i) => <button key={i} className="chip" title={source.value} onClick={() => void openSource(source)}><Icon name={source.kind === 'url' ? 'arrow' : 'attach'} size={11} />{source.label || source.value}</button>)}</div>}
-          {item.kind === 'tracker' && <div className="tracker-days">{Array.from({ length: 7 }, (_, i) => { const d = new Date(now); d.setDate(d.getDate() - 6 + i); const key = dayKey(d.getTime()); return <span key={key} className={item.checks.includes(key) ? 'checked' : ''} title={key}>{d.toLocaleDateString([], { weekday: 'narrow' })}</span> })}<button className="text-button" aria-pressed={item.checks.includes(dayKey(now))} disabled={busy} onClick={() => void act({ op: 'check', id: item.id })}>{item.checks.includes(dayKey(now)) ? 'Done today' : 'Check in today'}</button></div>}
-          {(item.kind === 'project' || item.kind === 'session' || overdue) && <div className="brain-more">
-            {item.kind === 'project' && <><button onClick={() => { setProject(item.id); setTab('today') }}>View project</button><button onClick={() => onCompose(`Save where I am with project "${item.title}". My next step is `)}>Save a session</button></>}
-            {item.kind === 'session' && <button onClick={() => onCompose(`Help me resume the saved Kibu session "${item.title}" (id ${item.id}). Show its next steps and saved sources.`)}>Resume with Kibu</button>}
-            {overdue && <><button disabled={busy} onClick={() => void act({ op: 'snooze', id: item.id, minutes: 10 })}>In 10 min</button>{item.acknowledgedAt === null && <button disabled={busy} onClick={() => void act({ op: 'acknowledge', id: item.id })}>Dismiss alert</button>}</>}
-          </div>}
-        </article>
-      })}
-      {!visible.length && !editing && <div className="brain-empty"><Sprite state="idle" mood={query ? 'curious' : 'reading'} size={54} quiet /><strong>{query ? 'Nothing matched that.' : tab === 'today' ? 'Room to think.' : 'Nothing here yet.'}</strong><p>{query ? 'Try a title, a phrase, or another project.' : 'Add something, or just tell Kibu to keep it.'}</p><button className="text-button" onClick={() => onCompose(tab === 'today' ? 'Remind me to ' : tab === 'tracker' ? 'Track reading daily' : tab === 'session' ? 'Save where I am. My next step is ' : 'Note: ')}>Ask Kibu <Icon name="arrow" size={13} /></button></div>}
-    </div>
+              : <span className="brain-glyph"><Icon name={ICON[item.kind]} size={14} /></span>}
+            <div className="brain-main">
+              <div className="brain-card-top">
+                <button className="brain-title" onClick={() => setEditing(item)}>{item.title}</button>
+                {mixed && <span className="brain-kind">{item.kind === 'bookmark' ? 'saved' : item.kind}</span>}
+                <span className="brain-actions">
+                  <button onClick={() => setEditing(item)}>Edit</button>
+                  <button disabled={busy} onClick={() => void act({ op: item.status === 'archived' ? 'reopen' : 'archive', id: item.id })}>{item.status === 'archived' ? 'Restore' : 'Archive'}</button>
+                </span>
+              </div>
+              {item.body && <p className="brain-body">{item.body}</p>}
+              {(projectName || item.dueAt !== null || item.estimateMinutes) && <div className="brain-meta">{item.dueAt !== null && <time className={overdue ? 'warn' : ''} dateTime={new Date(item.dueAt).toISOString()}><Icon name="clock" size={11} />{dateLabel(item.dueAt, now)}{item.repeat !== 'none' ? ` · ${item.repeat}` : ''}</time>}{projectName && <span><Icon name="folder" size={11} />{projectName}</span>}{item.estimateMinutes && <span>{item.estimateMinutes} min</span>}</div>}
+              {item.sources.length > 0 && <div className="brain-sources">{item.sources.map((source, i) => <button key={i} className="chip" title={source.value} onClick={() => void openSource(source)}><Icon name={source.kind === 'url' ? 'arrow' : 'attach'} size={11} />{source.label || source.value}</button>)}</div>}
+              {item.kind === 'tracker' && <div className="tracker-days">{Array.from({ length: 7 }, (_, i) => { const d = new Date(now); d.setDate(d.getDate() - 6 + i); const key = dayKey(d.getTime()); return <span key={key} className={`${item.checks.includes(key) ? 'checked' : ''} ${i === 6 ? 'is-today' : ''}`} title={key}>{d.toLocaleDateString([], { weekday: 'narrow' })}</span> })}<button className="text-button" aria-pressed={doneToday} disabled={busy} onClick={() => void act({ op: 'check', id: item.id })}>{doneToday ? <><Icon name="check" size={13} />Done today</> : 'Check in today'}</button></div>}
+              {(item.kind === 'project' || item.kind === 'session' || overdue) && <div className="brain-more">
+                {item.kind === 'project' && <><button onClick={() => { setProject(item.id); setTab('today') }}>View project</button><button onClick={() => onCompose(`Save where I am with project "${item.title}". My next step is `)}>Save a session</button></>}
+                {item.kind === 'session' && <button onClick={() => onCompose(`Help me resume the saved Kibu session "${item.title}" (id ${item.id}). Show its next steps and saved sources.`)}>Resume with Kibu</button>}
+                {overdue && <><button disabled={busy} onClick={() => void act({ op: 'snooze', id: item.id, minutes: 10 })}>In 10 min</button>{item.acknowledgedAt === null && <button disabled={busy} onClick={() => void act({ op: 'acknowledge', id: item.id })}>Dismiss alert</button>}</>}
+              </div>}
+            </div>
+          </article>
+        })}
+      </div>)}
+    </div>}
+    {!visible.length && !editing && <div className="brain-empty">
+      <Sprite state="idle" mood={searching ? 'curious' : 'reading'} size={54} quiet />
+      <strong>{searching ? 'Nothing matched that.' : tab === 'today' ? 'Room to think.' : tab === 'archive' ? 'Nothing archived.' : 'Nothing here yet.'}</strong>
+      <p>{searching ? 'Try a title, a phrase, or another project.' : tab === 'archive' ? 'Archived things wait here until you need them again.' : 'Add something, or just tell Kibu to keep it.'}</p>
+      {!searching && STARTERS[tab].length > 0 && <div className="starters">{STARTERS[tab].map(([label, prompt]) => <button key={label} onClick={() => onCompose(prompt)}>{label}</button>)}</div>}
+    </div>}
     <p className="brain-footnote">Kept on this Mac · reminders catch up when Kibu runs again</p>
   </section>
 }
+
+const PRESETS = [15, 25, 50]
 
 /** The focus timer. While it runs, the pet on the desktop is a little TV showing the same clock. */
 function Focus({ timer, now, busy, act }: { timer: BrainTimer | null; now: number; busy: boolean; act: (r: BrainRequest) => Promise<void> }): React.JSX.Element {
@@ -109,18 +171,23 @@ function Focus({ timer, now, busy, act }: { timer: BrainTimer | null; now: numbe
   if (!timer) {
     const valid = minutes >= 1 && minutes <= 1440 && !!label.trim()
     return <form className="focus is-idle" onSubmit={e => { e.preventDefault(); if (valid) void act({ op: 'timer', action: 'start', minutes, label }) }}>
-      <span className="focus-screen"><DotClock ms={(Number.isFinite(minutes) ? minutes : 0) * 60000} tone="idle" pitch={3.2} /></span>
-      <div className="focus-copy"><input aria-label="Timer label" value={label} onChange={e => setLabel(e.target.value)} maxLength={100} /><span>Kibu turns into a little TV and keeps time.</span></div>
-      <label className="focus-minutes"><input type="number" aria-label="Timer minutes" min="1" max="1440" value={minutes} onChange={e => setMinutes(Number(e.target.value))} /><span>min</span></label>
+      <span className="focus-screen"><DotClock ms={(Number.isFinite(minutes) ? minutes : 0) * 60000} tone="idle" pitch={3.4} /></span>
+      <div className="focus-copy">
+        <input aria-label="Timer label" value={label} onChange={e => setLabel(e.target.value)} maxLength={100} />
+        <span className="focus-presets">{PRESETS.map(m => <button type="button" key={m} aria-pressed={minutes === m} onClick={() => setMinutes(m)}>{m}</button>)}<label><input type="number" aria-label="Timer minutes" min="1" max="1440" value={minutes} onChange={e => setMinutes(Number(e.target.value))} />min</label></span>
+      </div>
       <button type="submit" className="brain-add" disabled={busy || !valid}>Start</button>
     </form>
   }
   const tone = timer.status === 'running' ? 'on' : timer.status
-  return <div className={`focus is-${timer.status}`}>
-    <span className="focus-screen"><DotClock ms={timerRemaining(timer, now)} tone={tone} pitch={3.2} /></span>
+  const left = timerRemaining(timer, now)
+  const progress = timer.durationMs > 0 ? Math.min(1, Math.max(0, 1 - left / timer.durationMs)) : 0
+  return <div className={`focus is-${timer.status}`} style={{ '--progress': progress } as React.CSSProperties}>
+    <span className="focus-screen"><DotClock ms={left} tone={tone} pitch={3.4} /></span>
     <div className="focus-copy"><strong>{timer.label}</strong><span>{timer.status === 'ringing' ? 'Time’s up. Take a breath.' : timer.status === 'paused' ? 'Paused · pick up when you’re ready' : 'On Kibu’s screen until it’s done'}</span></div>
     <button disabled={busy} className="text-button" onClick={() => void act({ op: 'timer', action: timer.status === 'running' ? 'pause' : timer.status === 'paused' ? 'resume' : 'cancel' })}>{timer.status === 'running' ? 'Pause' : timer.status === 'paused' ? 'Resume' : 'Finish'}</button>
     {timer.status !== 'ringing' && <button disabled={busy} className="icon-button" aria-label="Cancel timer" title="Cancel timer" onClick={() => void act({ op: 'timer', action: 'cancel' })}><Icon name="close" size={14} /></button>}
+    <span className="focus-progress" aria-hidden="true" />
   </div>
 }
 

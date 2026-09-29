@@ -31,6 +31,11 @@ export interface StartTaskRequest {
   droppedPaths?: string[]
   /** Set when the request came from "help me with this window". */
   includeFrontWindow?: boolean
+  /**
+   * The turn this message replies to: a task id continues that conversation,
+   * null starts a new one. Left out, a recent answer is assumed to be context.
+   */
+  followUp?: string | null
 }
 
 export interface AnswerQuestionRequest {
@@ -70,6 +75,7 @@ export const IPC = {
   secretsSetJev: 'secrets:set-jev',
   secretsStatusJev: 'secrets:status-jev',
   claudeCodeStatus: 'claude-code:status',
+  codingAppsStatus: 'coding-apps:status',
   canWork: 'status:can-work',
   benchRun: 'bench:run',
   settingsGet: 'settings:get',
@@ -149,10 +155,12 @@ export type HostToRuntime =
       /** Try the no-planner Jev workflows before the planning model. */
       workflowsEnabled: boolean
       /**
-       * Plan through the locally installed Claude Code CLI rather than the
-       * Anthropic API, using the login that is already on this Mac.
+       * Plan through a coding app installed on this Mac rather than the
+       * Anthropic API, using the login that is already there.
        */
       useClaudeCode: boolean
+      /** Which coding app plans, when useClaudeCode is set. */
+      codingApp: CodingApp
     }
   | { type: 'pause'; taskId: string }
   | { type: 'resume'; taskId: string }
@@ -217,6 +225,10 @@ export interface PreviousTurn {
   request: string
   headline: string
   secondsAgo: number
+  /** The person chose to reply in this conversation, rather than it being recent. */
+  explicit?: boolean
+  /** Turns before that one in the same chat, oldest first, so a reply has the whole thread. */
+  earlier?: { request: string; headline: string }[]
 }
 
 export interface FrontWindow {
@@ -232,13 +244,28 @@ export interface ModelConfig {
   jev: string
   /** Model alias used when planning through the local Claude Code CLI. */
   claudeCode: string
+  /** Codex model; empty means whatever Codex is configured to use. */
+  codex: string
+  /** OpenCode model as provider/model; empty means its configured default. */
+  opencode: string
   maxTokens: number
+}
+
+/** The coding apps on this Mac that Kibu can plan through, using their own login. */
+export type CodingApp = 'claude-code' | 'codex' | 'opencode'
+
+export interface CodingAppStatus {
+  id: CodingApp
+  label: string
+  available: boolean
 }
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   planner: 'claude-opus-5',
   jev: 'jev-latest',
   claudeCode: 'sonnet',
+  codex: '',
+  opencode: '',
   maxTokens: 16000
 }
 
@@ -272,6 +299,8 @@ export interface KibuBridge {
   hasJevKey(): Promise<boolean>
   /** Whether the Claude Code CLI can be found on this machine. */
   hasClaudeCode(): Promise<boolean>
+  /** Which coding apps are installed, so settings offers only what works. */
+  codingApps(): Promise<CodingAppStatus[]>
   /** Whether any planning route is configured — a key, or Claude Code. */
   canWork(): Promise<boolean>
   /** Times each route a request can take on this machine. */
@@ -338,6 +367,8 @@ export interface TaskSummaryRow {
   headline: string
   createdAt: number
   undoable: boolean
+  /** How many turns the chat has. A History row is a chat, not a single message. */
+  turns: number
 }
 
 /** What the panel window is currently doing, as the renderer needs to know it. */
@@ -366,13 +397,20 @@ export interface Settings {
   /** Little unprompted remarks from the pet: greetings, check-ins, the odd question. */
   chatty: boolean
   /**
-   * Use the locally installed Claude Code as the planning model instead of an
-   * Anthropic API key. For running Kibu on your own machine with your own
-   * login; a distributed build must use a key.
+   * Plan with a coding app on this Mac (Claude Code, Codex or OpenCode)
+   * instead of an Anthropic API key. For running Kibu on your own machine
+   * with your own login; a distributed build must use a key. The name is
+   * kept from when Claude Code was the only one, so saved settings still load.
    */
   useClaudeCode: boolean
+  /** Which coding app plans when useClaudeCode is on. */
+  codingApp: CodingApp
   /** Which Claude Code model alias to plan with. */
   claudeCodeModel: string
+  /** Codex model; empty uses Codex's own default. */
+  codexModel: string
+  /** OpenCode model as provider/model; empty uses OpenCode's own default. */
+  opencodeModel: string
   petX: number
   petY: number
   /** Where the user last left the panel; -1 means it has never been placed. */
@@ -395,7 +433,10 @@ export const DEFAULT_SETTINGS: Settings = {
   confirmEveryAction: false,
   chatty: true,
   useClaudeCode: false,
+  codingApp: 'claude-code',
   claudeCodeModel: 'sonnet',
+  codexModel: '',
+  opencodeModel: '',
   petX: -1,
   petY: -1,
   panelX: -1,

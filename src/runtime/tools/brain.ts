@@ -15,7 +15,7 @@ export const brainTool: ToolDefinition = {
     const state = await ctx.brain(i.request)
     const selected = i.request.op === 'list' ? state.items.slice(0, 60) : i.request.op === 'create' ? state.items.filter(item => !before!.items.some(old => old.id === item.id)) : state.items.filter(item => item.id === i.request.id)
     const result = { timer: state.timer, total: i.request.op === 'list' ? state.items.length : selected.length, items: selected.map(item => ({ ...item, body: i.request.op === 'list' && !i.request.id ? item.body.slice(0, 1500) : item.body })) }
-    return { result, evidence: i.request.op === 'list' ? [] : [{ kind: 'text', label: 'Kibu workspace', value: 'Saved locally. Open Workspace to review.' }] }
+    return { result, evidence: i.request.op === 'list' ? [] : [{ kind: 'text', label: 'Kibu workspace', value: 'Saved to your workspace on this Mac.' }] }
   },
   async verify(i, out, ctx) {
     if (!ctx.brain) return { verified: false, method: 'workspace-readback', detail: 'Workspace unavailable' }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Memory, PermissionStatus, Settings } from '../../../shared/protocol.js'
+import type { CodingAppStatus, Memory, PermissionStatus, Settings } from '../../../shared/protocol.js'
 
 /**
  * Keys, habits and permissions — the only settings there are, written as
@@ -13,7 +13,7 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
   const [jev, setJev] = useState('')
   const [hasAnthropic, setHasAnthropic] = useState(false)
   const [hasJev, setHasJev] = useState(false)
-  const [hasClaudeCode, setHasClaudeCode] = useState(false)
+  const [apps, setApps] = useState<CodingAppStatus[]>([])
   const [note, setNote] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,7 +24,7 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
     const has = await window.kibu.hasApiKey()
     setHasAnthropic(has)
     setHasJev(await window.kibu.hasJevKey())
-    setHasClaudeCode(await window.kibu.hasClaudeCode())
+    setApps(await window.kibu.codingApps())
     onKeyChange(has)
   }
 
@@ -68,7 +68,16 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
             <button className="key-save" disabled={!provider.value.trim() || saving} onClick={() => void save(provider.id)}>Save</button>
           </div>
         ))}
-        {hasClaudeCode && <label className="habit"><span>Use local Claude Code</span><input type="checkbox" checked={settings.useClaudeCode} onChange={(e) => void update({ useClaudeCode: e.target.checked })} /></label>}
+        {apps.some((a) => a.available) && <>
+          <label className="habit"><span>Plan with a coding app on this Mac</span><input type="checkbox" checked={settings.useClaudeCode} onChange={(e) => void update({ useClaudeCode: e.target.checked })} /></label>
+          {settings.useClaudeCode && <label className="row"><span>Coding app</span><select aria-label="Coding app" value={settings.codingApp} onChange={(e) => void update({ codingApp: e.target.value as Settings['codingApp'] })}>
+            {apps.map((a) => <option key={a.id} value={a.id} disabled={!a.available}>{a.label}{a.available ? '' : ' — not installed'}</option>)}
+          </select></label>}
+          {settings.useClaudeCode && settings.codingApp !== 'claude-code' && <label className="row"><span>Model</span><input key={settings.codingApp} aria-label="Coding app model"
+            placeholder={settings.codingApp === 'opencode' ? 'provider/model, or its default' : 'Its own default'}
+            defaultValue={settings.codingApp === 'codex' ? settings.codexModel : settings.opencodeModel}
+            onBlur={(e) => void update(settings.codingApp === 'codex' ? { codexModel: e.target.value } : { opencodeModel: e.target.value }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Couldn’t save that model.'))} /></label>}
+        </>}
         {note && <p className="ok" role="status">Saved to Keychain.</p>}
       </div>
       {only !== 'keys' && <>
@@ -86,7 +95,7 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
           <label className="row"><span>Budget / task ($)</span><input type="number" min={0.1} step={0.25} defaultValue={settings.maxUsdPerTask} onBlur={(e) => { const value = Number(e.target.value); if (Number.isFinite(value) && value >= 0.1) void update({ maxUsdPerTask: value }); else e.target.value = String(settings.maxUsdPerTask) }} /></label>
           <label className="row"><span>Shortcut</span><input defaultValue={settings.shortcut} onBlur={(e) => { if (e.target.value.trim()) void update({ shortcut: e.target.value }) }} /></label>
         </details>
-        <details className="setting-section"><summary>Privacy & connections</summary><p className="dim">History stays on this Mac. Relevant task context goes to your model provider. Delete tasks from History to remove their saved data and undo records.</p><p className="dim">Anthropic handles open-ended tasks. TypeSafe assists quick file workflows. Local Claude Code uses your existing login. File search works without a model key.</p></details>
+        <details className="setting-section"><summary>Privacy & connections</summary><p className="dim">History stays on this Mac. Relevant task context goes to your model provider. Delete tasks from History to remove their saved data and undo records.</p><p className="dim">Anthropic handles open-ended tasks. TypeSafe assists quick file workflows. Claude Code, Codex or OpenCode on this Mac use your existing login, and Kibu keeps their conversations in its own history rather than theirs. File search works without a model key.</p></details>
       </>}
     </div>
   )

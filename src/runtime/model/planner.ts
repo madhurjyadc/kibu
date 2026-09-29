@@ -44,7 +44,7 @@ Questions and conversation: not every message is a job. If the user asks a quest
 Writing style: plain, calm and short. No emoji or decorative symbols. Lead with the answer in one sentence. When listing things, use a Markdown list where each item starts with a short bold label, a dash, and one line, e.g. "- **Files** — find, sort and rename". Avoid headings for anything under a screen of text.
 
 About yourself, so questions about Kibu get true answers:
-- Memory: every task, its result and its undo record are saved locally on this Mac and listed in History. A follow-up within about ten minutes of a finished task is read as part of the same conversation. Kibu also keeps a small memory of things the user told it or chose before, on this Mac; the relevant ones, if any, are given to you in <memory>. The user can ask what is remembered, or say "forget …", at any time.
+- Memory: every task, its result and its undo record are saved locally on this Mac and listed in History. A reply sent in the same chat is read as part of that conversation; a new chat starts fresh. Kibu also keeps a small memory of things the user told it or chose before, on this Mac; the relevant ones, if any, are given to you in <memory>. The user can ask what is remembered, or say "forget …", at any time.
 - Privacy: history stays on this Mac; only the context a step needs is sent to the model provider.
 - Abilities: files and folders (find, organise, rename, move, copy); Calendar events, reminders and notes (read, add; additions can be undone); email drafts in Mail; reading the tabs open in the user's browsers and what they have selected; running the user's Shortcuts; dark mode and volume; opening and quitting apps; reading and pressing controls in Mac apps when Accessibility is granted; and a separate browser for web pages, forms and downloads. File moves, renames, new folders, and new events, reminders and notes can be undone.
 
@@ -69,6 +69,12 @@ export interface PlannerLike {
    * Optional: a planner without tiers ignores it.
    */
   setTier?(tier: 'quick' | 'full'): void
+  /**
+   * True when the quick tier is a smaller model rather than the same model
+   * thinking less. The loop then hands a job the quick model started to the
+   * full one, since a small model should answer, not act.
+   */
+  readonly quickSwapsModel?: boolean
   /** Releases anything the planner holds open, such as a CLI process. */
   dispose?(): void
 }
@@ -80,6 +86,12 @@ export interface PlannerLike {
 export class Planner implements PlannerLike {
   private client: Anthropic
   private messages: Anthropic.MessageParam[] = []
+  /**
+   * How hard the model thinks per step. Small jobs run the same model at low
+   * effort rather than a smaller model: one model keeps one cache, and low
+   * effort on it is quick without giving up judgment.
+   */
+  private effort: 'low' | 'high' = 'high'
 
   constructor(
     private readonly model: string,
@@ -91,6 +103,10 @@ export class Planner implements PlannerLike {
       timeout: 120_000,
       maxRetries: 2
     })
+  }
+
+  setTier(tier: 'quick' | 'full'): void {
+    this.effort = tier === 'quick' ? 'low' : 'high'
   }
 
   seed(task: TaskState, droppedPaths: string[]): void {
@@ -138,7 +154,7 @@ export class Planner implements PlannerLike {
       max_tokens: this.maxTokens,
       // Adaptive thinking is the current API for Opus 5; budget_tokens is gone.
       thinking: { type: 'adaptive' },
-      output_config: { effort: 'high' },
+      output_config: { effort: this.effort },
       // Caching the stable prefix (system + tool list) across loop iterations
       // is most of the cost saving in a long task.
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
