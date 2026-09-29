@@ -9,6 +9,7 @@ import { Steps } from './components/Steps.js'
 import { Past } from './components/Past.js'
 import { Tune } from './components/Tune.js'
 import { Bench } from './components/Bench.js'
+import { Welcome } from './components/Welcome.js'
 import { MOOD_FOR, Sprite, type Mood } from './components/Sprite.js'
 import { Icon, type IconName } from './components/Icon.js'
 import { Markdown, plainText } from './components/Markdown.js'
@@ -69,6 +70,9 @@ export function Panel(): React.JSX.Element {
   const dock = useRef<HTMLDivElement>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [panel, setPanel] = useState<PanelState>({ docked: false, pinned: false })
+  /** First-run setup, or /setup: shown in place of everything else until it is finished or skipped. */
+  const [welcome, setWelcome] = useState(false)
+  useEffect(() => { void window.kibu.getSettings().then((s) => setWelcome(!s.onboarded)).catch(() => {}) }, [])
   const sending = useRef(false)
   const workspace = useRef<HTMLElement>(null)
   const running = !!task && RUNNING.includes(task.status)
@@ -137,8 +141,10 @@ export function Panel(): React.JSX.Element {
     const el = workspace.current
     // Minimized, the window is the island: its narrow layout says nothing
     // about how tall the panel should be.
-    if (!el || panel.docked) return
+    if (!el || panel.docked || welcome) return
     const measure = (): void => {
+      // Setup replaces this page wholesale; a late callback finds it detached.
+      if (!el.isConnected) return
       const style = getComputedStyle(el)
       const content = [...el.children].reduce((h, c) => h + (c as HTMLElement).offsetHeight, 0) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
       // The fixed parts, measured directly: mid-animation the window height
@@ -152,7 +158,7 @@ export function Panel(): React.JSX.Element {
     for (const c of el.children) observer.observe(c)
     if (dock.current) observer.observe(dock.current)
     return () => observer.disconnect()
-  }, [view, task?.id, task?.status, task?.question?.id, thread.length, panel.docked, history.length])
+  }, [view, task?.id, task?.status, task?.question?.id, thread.length, panel.docked, history.length, welcome])
   // A new turn lands at the bottom of the chat, the way a reply does anywhere else.
   useEffect(() => {
     setConfirmClear(false); setConfirmDelete(false)
@@ -194,6 +200,7 @@ export function Panel(): React.JSX.Element {
     try {
       switch (name) {
         case 'new': newChat(); return
+        case 'setup': setWelcome(true); return
         case 'workspace': setView('brain'); return
         case 'undo': {
           const rows = await window.kibu.listHistory(25)
@@ -321,6 +328,19 @@ export function Panel(): React.JSX.Element {
       onEscape={() => view === 'home' ? void window.kibu.closePanel() : setView('home')} onDraft={setDraft} />
   }
 
+  if (welcome && !panel.docked) {
+    return (
+      <div className="kibu is-onboarding" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+        <Welcome onDone={(prompt) => {
+          setWelcome(false)
+          void refreshSetup().catch(reportError)
+          if (prompt) compose(prompt)
+          else requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('#composer')?.focus())
+        }} />
+      </div>
+    )
+  }
+
   return (
     <div className={`kibu ${dragging ? 'is-dropping' : ''} ${panel.docked ? 'is-docked' : ''} ${moving ? 'is-moving' : ''} ${view === 'home' && !task ? 'is-home' : ''}`}
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
@@ -377,9 +397,9 @@ export function Panel(): React.JSX.Element {
         {view === 'brain' && <Brain state={brain} onCompose={compose} onBack={() => setView('home')} />}
         {view === 'steps' && <Steps task={task} logs={task ? logs.filter((l) => l.taskId === task.id) : []} />}
         {view === 'past' && <Past rows={history} onOpen={openTask} onDelete={deleteTask} onUndo={async (id) => { const report = await window.kibu.undoTask(id); await refreshHistory(); return report }} />}
-        {(view === 'keys' || view === 'tune') && <Tune only={view === 'keys' ? 'keys' : undefined} onKeyChange={() => void refreshSetup().catch(reportError)} />}
+        {(view === 'keys' || view === 'tune') && <Tune only={view === 'keys' ? 'keys' : undefined} onKeyChange={() => void refreshSetup().catch(reportError)} onSetup={() => setWelcome(true)} />}
         {view === 'bench' && <Bench rows={bench} running={benching} />}
-        {view === 'help' && <div className="help-page"><p className="capability-note">Files · Mac apps · Browser</p>{blind && <button className="permission-link" onClick={() => setView('tune')}>Enable app control →</button>}<ul className="help">{COMMANDS.map((c) => <li key={c.name}><button className="cmd" onClick={() => void command(c.name)}>/{c.name}</button><span className="dim">{c.hint}</span></li>)}</ul></div>}
+        {view === 'help' && <div className="help-page"><p className="capability-note">Files · Mac apps · Browser</p>{blind && <button className="permission-link" onClick={() => setWelcome(true)}>Enable app control →</button>}<ul className="help">{COMMANDS.map((c) => <li key={c.name}><button className="cmd" onClick={() => void command(c.name)}>/{c.name}</button><span className="dim">{c.hint}</span></li>)}</ul></div>}
       </main>
       {chatting && <div className="reply-dock" ref={dock}>{composer('reply')}</div>}
       <footer className="statusbar">

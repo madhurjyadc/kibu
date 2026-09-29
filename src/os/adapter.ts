@@ -7,6 +7,8 @@
  */
 import type { OsPermission, PermissionStatus } from '../shared/types.js'
 
+export type AutomationStatus = 'granted' | 'denied' | 'not-asked' | 'not-running' | 'not-installed' | 'unknown'
+
 export type Capability =
   | 'apps.list'
   | 'window.inspect'
@@ -108,6 +110,11 @@ export interface OsAdapter {
   getPermissions(): Promise<PermissionStatus[]>
   /** Triggers the system prompt, or opens the relevant Settings pane. */
   requestPermission(p: OsPermission): Promise<PermissionStatus>
+  /**
+   * Whether Kibu may script another app. Without `ask` this never prompts;
+   * with it, the system asks the person if they have not answered yet.
+   */
+  automationPermission(bundleId: string, ask: boolean): Promise<AutomationStatus>
 
   listApps(): Promise<AppInfo[]>
   getFrontmostWindow(): Promise<WindowSnapshot | null>

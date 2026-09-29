@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
-import type { CodingAppStatus, Memory, PermissionStatus, Settings } from '../../../shared/protocol.js'
+import type { CodingAppStatus, Memory, Settings } from '../../../shared/protocol.js'
+import { SetupList, useSetup } from './Setup.js'
+import { ShortcutKey } from './ShortcutKey.js'
 
 /**
  * Keys, habits and permissions — the only settings there are, written as
  * things Kibu is or isn't allowed to do rather than as a preferences screen.
  * `only="keys"` is what /keys shows.
  */
-export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: boolean): void }): React.JSX.Element {
+export function Tune({ only, onKeyChange, onSetup }: { only?: 'keys'; onKeyChange(has: boolean): void; onSetup?(): void }): React.JSX.Element {
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [perms, setPerms] = useState<PermissionStatus[]>([])
+  const setup = useSetup(only !== 'keys')
   const [anthropic, setAnthropic] = useState('')
   const [jev, setJev] = useState('')
   const [hasAnthropic, setHasAnthropic] = useState(false)
@@ -20,7 +22,6 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
 
   async function refresh(): Promise<void> {
     setSettings(await window.kibu.getSettings())
-    setPerms(await window.kibu.getPermissions())
     const has = await window.kibu.hasApiKey()
     setHasAnthropic(has)
     setHasJev(await window.kibu.hasJevKey())
@@ -81,10 +82,12 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
         {note && <p className="ok" role="status">Saved to Keychain.</p>}
       </div>
       {only !== 'keys' && <>
-        <div className="setting-section"><h2>Permissions</h2><ul className="perms">{perms.map((p) => <li key={p.permission}>
-          <span title={p.purpose}>{p.permission.replace('-', ' ')}</span>
-          {p.granted ? <span className="ok">Enabled</span> : <button onClick={async () => { try { await window.kibu.requestPermission(p.permission); await refresh() } catch (e) { setError(e instanceof Error ? e.message : 'Permission unavailable.') } }}>Enable</button>}
-        </li>)}</ul></div>
+        <details className="setting-section" open={setup.items.some((i) => i.status !== 'granted' && i.group === 'control')}>
+          <summary>Permissions · {setup.items.filter((i) => i.status === 'granted').length} of {setup.items.length} allowed</summary>
+          {setup.error && <p className="bad" role="alert">{setup.error}</p>}
+          <SetupList items={setup.items} busy={setup.busy} onRequest={(id) => void setup.request(id)} onOpenSettings={(id) => void setup.openSettings(id)} />
+          {onSetup && <button className="welcome-link" onClick={onSetup}>Run setup again <span aria-hidden="true">→</span></button>}
+        </details>
         <MemorySection settings={settings} update={update} onError={setError} />
         <details className="setting-section"><summary>Preferences</summary>
           <label className="habit"><span>Open Kibu at login for reminders</span><input type="checkbox" checked={settings.launchAtLogin ?? false} onChange={(e) => void update({ launchAtLogin: e.target.checked })} /></label>
@@ -93,7 +96,12 @@ export function Tune({ only, onKeyChange }: { only?: 'keys'; onKeyChange(has: bo
           <label className="habit"><span>Little chats from Kibu</span><input type="checkbox" checked={settings.chatty} onChange={(e) => void update({ chatty: e.target.checked })} /></label>
           <label className="habit"><span>Confirm every action</span><input type="checkbox" checked={settings.confirmEveryAction} onChange={(e) => void update({ confirmEveryAction: e.target.checked })} /></label>
           <label className="row"><span>Budget / task ($)</span><input type="number" min={0.1} step={0.25} defaultValue={settings.maxUsdPerTask} onBlur={(e) => { const value = Number(e.target.value); if (Number.isFinite(value) && value >= 0.1) void update({ maxUsdPerTask: value }); else e.target.value = String(settings.maxUsdPerTask) }} /></label>
-          <label className="row"><span>Shortcut</span><input defaultValue={settings.shortcut} onBlur={(e) => { if (e.target.value.trim()) void update({ shortcut: e.target.value }) }} /></label>
+          <div className="row"><span>Open Kibu</span><ShortcutKey value={settings.shortcut} onChange={(shortcut) => void update({ shortcut })} /></div>
+          <label className="row"><span>The pet</span><select aria-label="Where the pet lives" value={settings.petMode ?? 'desktop'} onChange={(e) => void update({ petMode: e.target.value as Settings['petMode'] })}>
+            <option value="desktop">Always on the desktop</option>
+            <option value="peek">Only while working (peeks from the corner)</option>
+            <option value="menubar">Menu bar only</option>
+          </select></label>
         </details>
         <details className="setting-section"><summary>Privacy & connections</summary><p className="dim">History stays on this Mac. Relevant task context goes to your model provider. Delete tasks from History to remove their saved data and undo records.</p><p className="dim">Anthropic handles open-ended tasks. TypeSafe assists quick file workflows. Claude Code, Codex or OpenCode on this Mac use your existing login, and Kibu keeps their conversations in its own history rather than theirs. File search works without a model key.</p></details>
       </>}

@@ -4,7 +4,7 @@ This file is deliberately blunt. The most dangerous failure mode for an
 assistant like this is a confident claim of work it did not do, and that
 applies to the project's own status as much as to a task result.
 
-Last updated against commit state: initial prototype.
+Last updated: 29 September 2026, preparing the first public build.
 
 ---
 
@@ -40,7 +40,7 @@ the planner answering from it ("who is my manager?" → from memory, 3.1s), an
 unrelated request getting no memory at all, and forgetting it. Recall ran on
 the local rules; Jev's relevance judgement is covered only by a stubbed test.
 
-## Verified by automated tests (`npm test` — 214 tests, all passing)
+## Verified by automated tests (`npm test` — 270 tests, all passing)
 
 ### Authorization (`test/files.test.ts`)
 - A path inside a granted root is allowed; a path outside is reported as a
@@ -141,6 +141,53 @@ request sent and how the answer is treated — without a network or a key:
 - A task left mid-flight is marked interrupted on next launch rather than
   resumed; a finished task is left alone.
 
+### First-run tour (`npm run test:ui`, 30 September 2026)
+- Against the fake bridge: a first run opens on the tour and "Skip tour"
+  never shows it again; the shortcut can be changed by pressing a new chord;
+  every installed coding app is offered by name beside an API key, and
+  picking one switches planning to it; apps that are not installed are not
+  offered; the TypeSafe key is asked for and saved; showing a card asks for
+  nothing; each permission is asked for only by its own tap.
+- The helper's `automation` op was run by hand in check-only mode: it
+  reported Finder and Chrome as granted, Calendar as not running and a
+  made-up bundle id as not installed, without showing any dialog. **The
+  asking mode (a real "Kibu wants to control…" dialog), the folder prompts
+  and the notification prompt have not been exercised** on a Mac that has
+  never run Kibu.
+- `npm run app`'s build step was run: it produces an ad-hoc signed Kibu.app
+  that passes `codesign --verify --deep --strict` after being copied, with no
+  update feed. The copy into /Applications and the first launch from there
+  have not been run on this Mac.
+
+### Where the pet is (`test/pet-presence.test.ts`)
+- The default is always on the desktop. Peeking (an option), the pet is hidden when idle; it comes out while working or
+  waiting, and for a running timer or a due reminder; it stays six seconds
+  after a task finishes, then says it is leaving (so it can slide out) and
+  hides.
+- Resting the pointer on the lower right edge for a quarter of a second calls
+  it, a pointer passing by does not, and neither do the top of the edge or the
+  very corner (where macOS hot corners live); it stays while the pointer is on
+  it and goes a moment after the pointer leaves.
+- Menu bar only never shows it; always on the desktop never hides it.
+- A locally built Kibu.app was started for ten seconds on 30 September 2026
+  and logged no errors and no shortcut fallback. How the slide looks, and the
+  menu bar status text and notifications, were not watched on screen.
+
+### The command line (`test/shell.test.ts`)
+- `python3 -c`, `node -e` and `npm exec`/`install` are confirmed with the user
+  every time, with the exact command, and need write access to the folder
+  they run in.
+- Every known way of making git run another program is refused: `-c`,
+  `--config-env`, `git config`, `submodule foreach`, `bisect run`,
+  `--upload-pack`/`-u`, `ext::` URLs and `difftool -x`.
+- `cat` needs read access to what it reads; `mv` needs write access at both
+  ends, `cp` only where it lands.
+- The working folder is held to the home-folder and protected-location rules,
+  and a sibling folder sharing the home folder's name as a prefix is outside it.
+- `open` refuses apps, scripts, installers, executable files, `--args` and
+  non-web URL schemes; the panel's "open" button reveals such files in Finder
+  instead of opening them.
+
 ### Browser workflow (`test/browser.test.ts`)
 Against a real Chromium via Playwright and a local HTTP server:
 - Navigate, with verification comparing the landed origin.
@@ -151,6 +198,10 @@ Against a real Chromium via Playwright and a local HTTP server:
 - **Download where the file lands on disk with the correct contents**, its
   verifier confirms a non-zero size, and evidence points at the real path.
 - A reference from a previous page is rejected rather than mis-clicked.
+- Without Playwright's own Chromium (any installed copy), the managed browser
+  starts the installed Google Chrome, then Microsoft Edge, in Kibu's own
+  profile. Launching through the `chrome` channel was checked by hand on
+  29 September 2026 (Chrome 154); the fallback order itself is not unit-tested.
 
 ### The macOS helper (verified manually)
 The compiled Swift helper was run directly and confirmed to:
@@ -216,9 +267,18 @@ stay empty until each one is actually exercised.
   mechanisms should be joined up before concurrent tasks are allowed.
 - **Pause does not interrupt an in-flight tool call.** It takes effect at the
   next checkpoint, between steps. A long `browser_download` will finish first.
-- **No packaged build.** There is no code signing, notarization, or installer.
-  The Swift helper is loaded from `resources/bin` relative to the app path and
-  that path has only been exercised in development.
+- **The signed build has not been run.** An *unsigned* packaged build
+  (`electron-builder --dir`) was launched on 29 September 2026: the task
+  runtime started from inside `app.asar` and the Swift helper started from
+  `Contents/Resources/resources/bin`, and `Info.plist` carried the minimum
+  macOS version and permission strings. Signing, notarization, Gatekeeper on
+  a fresh Mac, Accessibility surviving a relaunch, and auto-update have not
+  been exercised, because no Developer ID certificate was available. Follow
+  the checklist in `docs/RELEASING.md` on the first draft release.
+- **The planner moved to Claude Sonnet 5.5 without a live run.** The request
+  shape type-checks against `@anthropic-ai/sdk` 0.127 (refusal fallback, and
+  dropping stale thinking after the history is trimmed), and a refusal is
+  covered by a scripted test, but no real Sonnet 5.5 call has been made.
 - **Windows and Linux are unimplemented.** `UnimplementedAdapter` reports every
   capability as unsupported, which is intentional — the runtime degrades to
   file work rather than failing confusingly — but nothing there has run.

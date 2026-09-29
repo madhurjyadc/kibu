@@ -70,6 +70,9 @@ export const IPC = {
   onHistoryDeleted: 'history:deleted',
   permissionsGet: 'permissions:get',
   permissionsRequest: 'permissions:request',
+  setupGet: 'setup:get',
+  setupRequest: 'setup:request',
+  setupOpenSettings: 'setup:open-settings',
   secretsSet: 'secrets:set',
   secretsStatus: 'secrets:status',
   secretsSetJev: 'secrets:set-jev',
@@ -105,6 +108,7 @@ export const IPC = {
   petCompose: 'pet:compose',
   petMenu: 'pet:menu',
   onPetPlay: 'pet:play',
+  onPetPresence: 'pet:presence',
   onSeed: 'panel:seed',
   onTaskUpdate: 'task:update',
   onPetState: 'pet:state',
@@ -261,7 +265,7 @@ export interface CodingAppStatus {
 }
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
-  planner: 'claude-opus-5',
+  planner: 'claude-sonnet-5-5',
   jev: 'jev-latest',
   claudeCode: 'sonnet',
   codex: '',
@@ -293,6 +297,12 @@ export interface KibuBridge {
   listHistory(limit?: number): Promise<TaskSummaryRow[]>
   getPermissions(): Promise<PermissionStatus[]>
   requestPermission(p: string): Promise<PermissionStatus>
+  /** Everything Kibu can be allowed to do on this Mac, and whether it is. Never prompts. */
+  getSetup(): Promise<SetupItem[]>
+  /** Asks macOS for one of them: its own dialog where there is one, else its Settings pane. */
+  requestSetup(id: string): Promise<SetupItem>
+  /** Opens the System Settings pane where an answer can be changed. */
+  openSetupSettings(id: string): Promise<void>
   setApiKey(key: string): Promise<boolean>
   hasApiKey(): Promise<boolean>
   setJevKey(key: string): Promise<boolean>
@@ -324,6 +334,8 @@ export interface KibuBridge {
   /** The pet's right-click menu. `napping` swaps Little nap for Wake up. */
   showPetMenu(napping: boolean): Promise<void>
   onPetPlay(cb: (action: PetPlay) => void): () => void
+  /** The pet is about to appear (true) or leave (false), so it can slide in and out. */
+  onPetPresence(cb: (visible: boolean) => void): () => void
   /** A request to place in the composer without sending it. */
   onSeed(cb: (text: string) => void): () => void
   /** Collapses the panel to the edge handle, or opens it back out. */
@@ -379,7 +391,30 @@ export interface PanelState {
   pinned: boolean
 }
 
+/** Where a permission lives, which is also how onboarding groups them. */
+export type SetupGroup = 'control' | 'apps' | 'browsers' | 'folders' | 'alerts'
+
+/**
+ * `asked` is for the one macOS answer Kibu cannot read back (notifications):
+ * the question was put, and the person can see whether it arrived.
+ */
+export type SetupStatus = 'granted' | 'denied' | 'not-asked' | 'asked' | 'not-installed' | 'unknown'
+
+/** One thing Kibu can be allowed to do on this Mac. */
+export interface SetupItem {
+  id: string
+  group: SetupGroup
+  label: string
+  /** What it unlocks, in one plain sentence. */
+  purpose: string
+  status: SetupStatus
+  /** A step the person takes themselves, outside macOS's own permission dialogs. */
+  hint?: string
+}
+
 export interface Settings {
+  /** The first-run setup has been finished or skipped. */
+  onboarded: boolean
   launchAtLogin: boolean
   /** Global shortcut accelerator, Electron syntax. */
   shortcut: string
@@ -396,6 +431,10 @@ export interface Settings {
   confirmEveryAction: boolean
   /** Little unprompted remarks from the pet: greetings, check-ins, the odd question. */
   chatty: boolean
+  /** Where the pet lives: always on the desktop, peeking out only when busy, or only in the menu bar. */
+  petMode: 'peek' | 'menubar' | 'desktop'
+  /** The person picked petMode themselves; until then the default applies. */
+  petModeChosen?: boolean
   /**
    * Plan with a coding app on this Mac (Claude Code, Codex or OpenCode)
    * instead of an Anthropic API key. For running Kibu on your own machine
@@ -425,13 +464,15 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  onboarded: false,
   launchAtLogin: false,
-  shortcut: 'CommandOrControl+Shift+K',
+  shortcut: 'Alt+Space',
   maxUsdPerTask: 1.5,
   jevEnabled: true,
   workflowsFirst: true,
   confirmEveryAction: false,
   chatty: true,
+  petMode: 'desktop',
   useClaudeCode: false,
   codingApp: 'claude-code',
   claudeCodeModel: 'sonnet',

@@ -16,12 +16,17 @@
     "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
     "icons": "node scripts/make-tray-icon.mjs",
     "setup": "npm run icons && npm run helper:build && npm run build",
+    "app-icon": "node scripts/make-app-icon.mjs",
+    "app": "node scripts/install-app.mjs",
+    "dist": "npm run helper:build && npm run build && electron-builder --mac --publish never",
+    "release": "npm run helper:build && npm run build && electron-builder --mac --publish always",
     "test:ui": "node scripts/renderer-smoke.mjs",
     "eval": "rm -rf dist-test && tsc -p tsconfig.test.json && node scripts/eval.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
     "@typesafe-ai/sdk": "^0.6.0",
+    "electron-updater": "^6.8.9",
     "playwright": "^1.63.0",
     "zod": "^4.6.5"
   },
@@ -31,6 +36,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.1.4",
     "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

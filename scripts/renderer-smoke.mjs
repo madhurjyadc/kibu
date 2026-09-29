@@ -15,17 +15,24 @@ const artifacts = process.env.KIBU_SCREENSHOT_DIR || '/tmp/kibu-design'
 await mkdir(artifacts, { recursive: true })
 await page.addInitScript(() => {
   const listeners = {}
-  const state = { calls: [], history: [], failStart: false, ready: true, panel: { docked: false, pinned: false }, settings: { workflowsFirst: true, jevEnabled: true, confirmEveryAction: false, maxUsdPerTask: 1.5, shortcut: 'CommandOrControl+Shift+K', useClaudeCode: false, memoryEnabled: true, memoryLearn: true }, memories: [
+  const state = { calls: [], history: [], failStart: false, ready: true, panel: { docked: false, pinned: false }, settings: { onboarded: false, launchAtLogin: false, chatty: true, workflowsFirst: true, jevEnabled: true, confirmEveryAction: false, maxUsdPerTask: 1.5, shortcut: 'Alt+Space', useClaudeCode: false, memoryEnabled: true, memoryLearn: true }, memories: [
     { id: 'm1', text: 'My manager is Priya', kind: 'fact', keys: ['manager', 'priya'], source: 'told', evidence: 1, createdAt: 1, updatedAt: 2, lastUsedAt: null, uses: 2 },
     { id: 'm2', text: 'Events like "Standup" go on the Work calendar', kind: 'choice', keys: ['standup'], choice: { decision: 'calendar', value: 'Work' }, source: 'learned', evidence: 2, createdAt: 1, updatedAt: 1, lastUsedAt: null, uses: 0 }
   ] }
   window.__test = { state, emit: (event, payload) => (listeners[event] || []).forEach((f) => f(payload)) }
   const sub = (event) => (cb) => { (listeners[event] ||= []).push(cb); return () => { listeners[event] = listeners[event].filter((f) => f !== cb) } }
   state.brain = { items: [], timer: null }
+  state.setup = [
+    { id: 'accessibility', group: 'control', label: 'Accessibility', purpose: 'Read what is in app windows and press their buttons.', status: 'not-asked' },
+    { id: 'app:com.apple.iCal', group: 'apps', label: 'Calendar', purpose: 'Read your agenda and add events you ask for.', status: 'not-asked' },
+    { id: 'app:com.google.Chrome', group: 'browsers', label: 'Google Chrome', purpose: 'See your open tabs and read the page you are on.', status: 'granted', hint: 'Also turn on View → Developer → Allow JavaScript from Apple Events.' },
+    { id: 'folder:Downloads', group: 'folders', label: 'Downloads', purpose: 'Find, tidy and rename files in Downloads.', status: 'not-asked' },
+    { id: 'notifications', group: 'alerts', label: 'Notifications', purpose: 'Reminders and timers.', status: 'not-asked' }
+  ]
   window.kibu = {
     getBrain: async () => state.brain,
     onBrainChanged: sub('brain'), onBrainOpen: sub('brain-open'), openBrain: async () => window.__test.emit('brain-open'),
-    onPetPlay: sub('play'), onCursor: sub('cursor'), showPetMenu: async () => {},
+    onPetPlay: sub('play'), onPetPresence: sub('presence'), onCursor: sub('cursor'), showPetMenu: async () => {},
     brainRequest: async (req) => {
       state.calls.push(['brain', req])
       if (req.op === 'create') state.brain.items.unshift({ id: `brain-${state.brain.items.length}`, status: 'open', body: '', projectId: null, dueAt: null, repeat: 'none', estimateMinutes: null, sources: [], checks: [], createdAt: Date.now(), updatedAt: Date.now(), notifiedAt: null, acknowledgedAt: null, ...req.item })
@@ -53,9 +60,12 @@ await page.addInitScript(() => {
     clearHistory: async () => { const ids = state.history.filter((r) => ['succeeded', 'failed', 'cancelled'].includes(r.status)).map((r) => r.id); state.history = state.history.filter((r) => !ids.includes(r.id)); state.calls.push(['clear']); window.__test.emit('deleted', ids) },
     answerQuestion: async (req) => state.calls.push(['answer', req]), closePanel: async () => {},
     onHistoryDeleted: sub('deleted'), onTaskUpdate: sub('task'), onLog: sub('log'), onDroppedPaths: sub('drop'), onPetState: sub('pet'), onDesktopSession: sub('desktop'), onFocusInput: sub('focus'), onPanelState: sub('panel'), onSeed: sub('seed'), petCompose: async () => {},
-    getSettings: async () => state.settings, setSettings: async (next) => Object.assign(state.settings, next), hasApiKey: async () => false, hasJevKey: async () => false, hasClaudeCode: async () => true, codingApps: async () => [{ id: 'claude-code', label: 'Claude Code', available: true }, { id: 'codex', label: 'Codex', available: true }, { id: 'opencode', label: 'OpenCode', available: false }],
-    setApiKey: async () => { state.calls.push(['key']); state.ready = true; return true }, setJevKey: async () => true,
-    requestPermission: async () => {}, resizePanel: async () => {}, pauseTask: async (id) => state.calls.push(['pause', id]), resumeTask: async () => {}, cancelTask: async (id) => state.calls.push(['cancel', id]),
+    getSettings: async () => state.settings, setSettings: async (next) => ({ ...Object.assign(state.settings, next) }), hasApiKey: async () => false, hasJevKey: async () => false, hasClaudeCode: async () => true, codingApps: async () => [{ id: 'claude-code', label: 'Claude Code', available: true }, { id: 'codex', label: 'Codex', available: true }, { id: 'opencode', label: 'OpenCode', available: false }],
+    setApiKey: async () => { state.calls.push(['key']); state.ready = true; return true }, setJevKey: async () => { state.calls.push(['jev-key']); return true },
+    requestPermission: async () => {},
+    getSetup: async () => structuredClone(state.setup),
+    requestSetup: async (id) => { state.calls.push(['setup', id]); const item = state.setup.find((i) => i.id === id); item.status = id === 'notifications' ? 'asked' : 'granted'; return structuredClone(item) },
+    openSetupSettings: async (id) => state.calls.push(['setup-settings', id]), resizePanel: async () => {}, pauseTask: async (id) => state.calls.push(['pause', id]), resumeTask: async () => {}, cancelTask: async (id) => state.calls.push(['cancel', id]),
     getTask: async () => state.task, undoTask: async () => ({ reversed: 2, skipped: [] }), stopDesktopSession: async () => {},
     openUrl: async (url) => state.calls.push(['url', url]), dragPanel: async (phase) => state.calls.push(['drag', phase]), centerPanel: async () => state.calls.push(['center']), openPath: async () => {}, revealPath: async () => {}, getPathForFile: () => '/test/file.txt', runBench: async () => [],
     setPetInteractive: async () => {}, setPetHitRects: async () => {},
@@ -71,7 +81,12 @@ const task = {
 }
 try {
   await page.goto(`${server.resolvedUrls.local[0]}#panel`)
+  // First run opens on setup, and setup can be skipped outright.
+  await page.getByText('Hi, I’m Kibu.').waitFor()
+  await page.screenshot({ path: `${artifacts}/welcome.png` })
+  await page.getByRole('button', { name: 'Skip tour', exact: true }).click()
   await page.getByRole('button', { name: 'Find', exact: true }).waitFor()
+  assert.equal(await page.evaluate(() => window.__test.state.settings.onboarded), true, 'Skipping setup must not show it again')
   assert.ok((await page.locator('body').innerText()).split(/\s+/).length < 35, 'Idle UI should stay concise')
   assert.equal(await page.evaluate(() => { const main = document.querySelector('.workspace'); return main.scrollHeight > main.clientHeight }), false, 'The ready home should fit without scrolling')
   await page.screenshot({ path: `${artifacts}/home.png` })
@@ -253,6 +268,57 @@ try {
   await page.setViewportSize({ width: 420, height: 600 })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   await page.screenshot({ path: `${artifacts}/workspace-compact.png` })
+  // Setup again from Settings: every permission is its own tap, and nothing is asked for without one.
+  await page.setViewportSize({ width: 620, height: 640 })
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByText('Permissions · 1 of 5 allowed').waitFor()
+  await page.getByRole('button', { name: 'Run setup again' }).click()
+  // The first card names the shortcut, and it can be changed by pressing a new one.
+  await page.getByRole('button', { name: /Shortcut ⌥ Option Space/ }).click()
+  await page.keyboard.press('Meta+Shift+J')
+  await page.waitForFunction(() => window.__test.state.settings.shortcut === 'Command+Shift+J')
+  await page.getByRole('button', { name: 'Show me', exact: true }).click()
+  await page.getByText('How should I think?').waitFor()
+  // Every coding app on the Mac is offered by name, next to an API key; the Jev key is asked for too.
+  await page.getByRole('radio', { name: /Codex/ }).click()
+  await page.waitForFunction(() => window.__test.state.settings.useClaudeCode === true && window.__test.state.settings.codingApp === 'codex')
+  await page.getByRole('radio', { name: /Claude Code/ }).click()
+  await page.waitForFunction(() => window.__test.state.settings.codingApp === 'claude-code')
+  assert.equal(await page.getByRole('radio', { name: /OpenCode/ }).count(), 0, 'Apps that are not installed are not offered')
+  await page.getByLabel('TypeSafe', { exact: true }).fill('test-jev-key')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.waitForFunction(() => window.__test.state.calls.some((c) => c[0] === 'jev-key'))
+  await page.screenshot({ path: `${artifacts}/welcome-think.png` })
+  await page.keyboard.press('Enter')
+  await page.getByText('Files.', { exact: true }).waitFor()
+  assert.equal(await page.evaluate(() => window.__test.state.calls.some((c) => c[0] === 'setup')), false, 'Showing a card must not ask for anything')
+  await page.getByRole('button', { name: 'Allow Downloads', exact: true }).click()
+  await page.waitForFunction(() => window.__test.state.setup.find((i) => i.id === 'folder:Downloads').status === 'granted')
+  await page.screenshot({ path: `${artifacts}/welcome-files.png` })
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByText('Your day.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Allow Calendar', exact: true }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByText('The web.', { exact: true }).waitFor()
+  await page.getByText('Also turn on View → Developer → Allow JavaScript from Apple Events.').waitFor()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByText('Other apps.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Allow Accessibility', exact: true }).click()
+  await page.screenshot({ path: `${artifacts}/welcome-apps.png` })
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByText('Remember & remind.', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Allow Notifications', exact: true }).click()
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByText('That’s it.', { exact: true }).waitFor()
+  await page.getByText('Claude Code', { exact: true }).waitFor()
+  assert.deepEqual(await page.evaluate(() => window.__test.state.calls.filter((c) => c[0] === 'setup').map((c) => c[1])), ['folder:Downloads', 'app:com.apple.iCal', 'accessibility', 'notifications'], 'Each permission is asked for only by its own tap')
+  await page.screenshot({ path: `${artifacts}/welcome-ready.png` })
+  const startsBefore = await page.evaluate(() => window.__test.state.calls.filter((c) => c[0] === 'start').length)
+  await page.getByRole('button', { name: 'Organize my Downloads folder' }).click()
+  await page.waitForFunction(() => document.querySelector('#composer')?.value === 'Organize my Downloads folder')
+  assert.equal(await page.evaluate(() => window.__test.state.calls.filter((c) => c[0] === 'start').length), startsBefore, 'A suggestion fills the composer without running')
+  await page.evaluate(() => { window.__test.state.settings.useClaudeCode = false; window.__test.state.settings.shortcut = 'Alt+Space' })
+
   await page.setViewportSize({ width: 260, height: 190 })
   await page.goto(`${server.resolvedUrls.local[0]}?pet-test=1#pet`)
   await page.locator('.pet-root').waitFor()
@@ -279,6 +345,6 @@ try {
   await page.getByRole('button', { name: '10 min', exact: true }).click()
   await page.waitForFunction(() => window.__test.state.brain.items[0].dueAt > Date.now())
   assert.deepEqual(errors, [], 'No renderer exceptions')
-  console.log('Renderer checks passed: minimal home, memory list and forgetting, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the island and back, drag to move, compact layout, workspace editing/search/archive, timer controls and pet transformation, and reminder snoozing.')
+  console.log('Renderer checks passed: first-run tour (skip, shortcut recorder, thinking choice, each permission asked only by its own tap, try-it), minimal home, memory list and forgetting, editable suggestions, failure recovery, attachments, answers, previews, settings, keys, pause, undo, task deletion, clear history, pin, minimize to the island and back, drag to move, compact layout, workspace editing/search/archive, timer controls and pet transformation, and reminder snoozing.')
   console.log(`Screenshots: ${artifacts}`)
 } finally { await browser.close(); await server.close() }

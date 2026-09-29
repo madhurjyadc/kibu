@@ -14,6 +14,7 @@ export const COMMANDS = [
   { name: 'center', hint: 'Move the panel back to the middle' },
   { name: 'keys', hint: 'Connections' },
   { name: 'tune', hint: 'Settings' },
+  { name: 'setup', hint: 'Permissions and first-run setup' },
   { name: 'bench', hint: 'Diagnostics' },
   { name: 'help', hint: 'Shortcuts' }
 ] as const

@@ -9,6 +9,8 @@ export interface PlannerProposal {
   /** Any prose the model produced alongside the calls. */
   text: string
   stopReason: string | null
+  /** Set when the model declined the request: its safety category, or 'unspecified'. */
+  refusal?: string
   usd: number
   inputTokens: number
   outputTokens: number
@@ -85,7 +87,7 @@ export interface PlannerLike {
  */
 export class Planner implements PlannerLike {
   private client: Anthropic
-  private messages: Anthropic.MessageParam[] = []
+  private messages: Anthropic.Beta.BetaMessageParam[] = []
   /**
    * How hard the model thinks per step. Small jobs run the same model at low
    * effort rather than a smaller model: one model keeps one cache, and low
@@ -149,20 +151,28 @@ export class Planner implements PlannerLike {
 
   async propose(tools: { name: string; description: string; input_schema: object }[]): Promise<PlannerProposal> {
     this.trimHistory()
-    const stream = this.client.messages.stream({
+    const stream = this.client.beta.messages.stream({
       model: this.model,
       max_tokens: this.maxTokens,
-      // Adaptive thinking is the current API for Opus 5; budget_tokens is gone.
-      thinking: { type: 'adaptive' },
+      betas: [
+        // A declined request is retried on a fallback model inside the same call.
+        'server-side-fallback-2026-07-01',
+        // trimHistory and the widening tool list both edit what came before;
+        // newer models reject replayed thinking after an edit unless told to drop it.
+        'thinking-binding-controls-2026-08-01'
+      ],
+      fallbacks: 'default',
+      thinking: { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } },
       output_config: { effort: this.effort },
       // Caching the stable prefix (system + tool list) across loop iterations
       // is most of the cost saving in a long task.
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      tools: tools as Anthropic.Tool[],
+      tools: tools as Anthropic.Beta.BetaTool[],
       messages: this.messages
     })
     const response = await stream.finalMessage()
 
+    // Thinking and fallback blocks go back exactly as they came.
     this.messages.push({ role: 'assistant', content: response.content })
 
     const calls: PlannerProposal['calls'] = []
@@ -172,15 +182,21 @@ export class Planner implements PlannerLike {
       else if (block.type === 'tool_use') calls.push({ id: block.id, name: block.name, input: block.input })
     }
 
-    const inputTokens = response.usage.input_tokens + (response.usage.cache_read_input_tokens ?? 0)
-    const outputTokens = response.usage.output_tokens
+    const usage = response.usage
+    const inputTokens = usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
+    const outputTokens = usage.output_tokens
     return {
       calls,
       text: text.trim(),
       stopReason: response.stop_reason,
+      ...(response.stop_reason === 'refusal' ? { refusal: response.stop_details?.category ?? 'unspecified' } : {}),
       inputTokens,
       outputTokens,
-      usd: costOf(this.model, response.usage.input_tokens, outputTokens)
+      // Costed at the model that actually answered, which differs after a fallback.
+      usd: costOf(response.model, usage.input_tokens, outputTokens, {
+        readTokens: usage.cache_read_input_tokens ?? 0,
+        writeTokens: usage.cache_creation_input_tokens ?? 0
+      })
     }
   }
 
@@ -203,7 +219,7 @@ export class Planner implements PlannerLike {
   }
 }
 
-function isToolResultMessage(m: Anthropic.MessageParam): boolean {
+function isToolResultMessage(m: Anthropic.Beta.BetaMessageParam): boolean {
   return (
     Array.isArray(m.content) &&
     m.content.some((b) => typeof b === 'object' && b !== null && 'type' in b && b.type === 'tool_result')

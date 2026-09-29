@@ -77,6 +77,12 @@ export interface ToolDefinition<I = any, O = unknown> {
   exclusiveDesktop?: boolean
   /** Scopes derived from the concrete input, checked before execution. */
   scopes(input: I): ScopeRequest[]
+  /**
+   * For inputs no folder grant can make safe (a command that runs code): a
+   * plain description of exactly what will happen. The user is asked every
+   * time, whatever the task has already been allowed.
+   */
+  confirm?(input: I): string | null
   /** Cheap checks that make failure legible before anything is changed. */
   precondition?(input: I, ctx: ToolContext): Promise<void>
   execute(input: I, ctx: ToolContext): Promise<ToolOutcome<O>>

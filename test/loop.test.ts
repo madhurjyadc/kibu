@@ -137,6 +137,14 @@ describe('cost limits', () => {
   test('cost maths is per million tokens', () => {
     assert.equal(costOf('claude-opus-5', 1_000_000, 1_000_000), 30)
   })
+  test('the default planner model has a known rate', () => {
+    assert.equal(rateFor('claude-sonnet-5-5').inputPerMTok, 2)
+    assert.equal(rateFor('claude-sonnet-5-5').outputPerMTok, 10)
+  })
+  test('cached input counts toward the limit: reads at a tenth, writes at a quarter more', () => {
+    const cost = costOf('claude-sonnet-5-5', 0, 0, { readTokens: 1_000_000, writeTokens: 1_000_000 })
+    assert.equal(Math.round(cost * 100) / 100, 2.7)
+  })
 })
 
 describe('observation staleness', () => {

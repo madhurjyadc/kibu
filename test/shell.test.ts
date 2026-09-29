@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { vetCommand, RefusedCommand } from '../src/runtime/tools/shell.js'
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs'
+import { vetCommand, RefusedCommand, commandScopes, shellRun, wouldLaunch } from '../src/runtime/tools/shell.js'
 import { splitArgs, buildPlan } from '../src/runtime/workflows/command.js'
 
 const ctx = { ask: async () => null, log: () => {} }
@@ -50,6 +51,90 @@ test('dangerous subcommands of allowed programs are refused', () => {
 test('reading is not marked as mutating, so it needs no write grant', () => {
   assert.equal(vetCommand('ls', []).mutates, false)
   assert.equal(vetCommand('mkdir', ['x']).mutates, true)
+})
+
+test('programs that run code are confirmed with the user every time, with the exact command', () => {
+  const cases: [string, string[]][] = [
+    ['python3', ['-c', 'import shutil; shutil.rmtree("x")']],
+    ['node', ['-e', 'require("child_process").execSync("id")']],
+    ['npm', ['exec', '--yes', 'some-package']],
+    ['npm', ['install']]
+  ]
+  for (const [program, args] of cases) {
+    const prompt = shellRun.confirm!({ program, args })
+    assert.ok(prompt, program)
+    assert.match(prompt!, new RegExp(program))
+    // No grant is free: the working folder needs write access as well.
+    assert.deepEqual(commandScopes(vetCommand(program, args)), [{ kind: 'write', path: homedir() }])
+  }
+  assert.equal(shellRun.confirm!({ program: 'ls', args: [] }), null)
+})
+
+test('git cannot be talked into running another program', () => {
+  for (const args of [
+    ['-c', 'alias.x=!id', 'x'],
+    ['--config-env=core.sshCommand=X', 'status'],
+    ['config', 'alias.x', '!id'],
+    ['submodule', 'foreach', 'id'],
+    ['bisect', 'run', 'id'],
+    ['clone', '--upload-pack=touch /tmp/pwned', 'repo'],
+    ['clone', '-u', 'touch /tmp/pwned', 'repo'],
+    ['clone', 'ext::sh -c id', 'repo'],
+    ['difftool', '-x', 'id']
+  ]) {
+    assert.throws(() => vetCommand('git', args), RefusedCommand, args.join(' '))
+  }
+  assert.doesNotThrow(() => vetCommand('git', ['log', '--oneline']))
+  assert.doesNotThrow(() => vetCommand('git', ['commit', '-m', 'first go']))
+})
+
+test('reading a file needs read access to it, not just any home path', () => {
+  const file = join(homedir(), 'notes/secret.txt')
+  const scopes = commandScopes(vetCommand('cat', [file]))
+  assert.deepEqual(scopes, [{ kind: 'read', path: homedir() }, { kind: 'read', path: file }])
+})
+
+test('a move needs write access at both ends; a copy only where it lands', () => {
+  const from = join(homedir(), 'Downloads/a.txt')
+  const to = join(homedir(), 'Library/LaunchAgents/a.plist')
+  assert.deepEqual(
+    commandScopes(vetCommand('mv', [from, to])).filter((s) => !('path' in s) || s.path !== homedir()),
+    [{ kind: 'write', path: from }, { kind: 'write', path: to }]
+  )
+  assert.deepEqual(
+    commandScopes(vetCommand('cp', [from, to])).filter((s) => !('path' in s) || s.path !== homedir()),
+    [{ kind: 'read', path: from }, { kind: 'write', path: to }]
+  )
+})
+
+test('the working folder is held to the same rules as the arguments', () => {
+  assert.throws(() => vetCommand('cat', ['passwd'], '/etc'), RefusedCommand)
+  assert.throws(() => vetCommand('ls', [], join(homedir(), '.ssh')), RefusedCommand)
+  // A sibling that merely shares the home folder's name as a prefix is outside it.
+  assert.throws(() => vetCommand('ls', [`${homedir()}-other/x`]), RefusedCommand)
+})
+
+test('open will not launch apps, scripts, installers or executables', () => {
+  const dir = mkdtempSync(join(homedir(), '.kibu-shell-test-'))
+  try {
+    const script = join(dir, 'run-me')
+    writeFileSync(script, '#!/bin/sh\nid\n')
+    chmodSync(script, 0o755)
+    const note = join(dir, 'note.txt')
+    writeFileSync(note, 'hello')
+    assert.equal(wouldLaunch(script), true)
+    assert.equal(wouldLaunch(note), false)
+    assert.throws(() => vetCommand('open', [script]), RefusedCommand)
+    for (const name of ['Evil.app', 'setup.command', 'install.pkg', 'x.sh', 'Do.workflow']) {
+      assert.throws(() => vetCommand('open', [join(dir, name)]), RefusedCommand, name)
+    }
+    assert.throws(() => vetCommand('open', ['-a', 'Preview', note, '--args', '--evil']), RefusedCommand)
+    assert.throws(() => vetCommand('open', ['x-apple.systempreferences:com.apple.preference.security']), RefusedCommand)
+    assert.doesNotThrow(() => vetCommand('open', [note]))
+    assert.doesNotThrow(() => vetCommand('open', ['https://example.com/page']))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('a dictated command splits into argv, honouring quotes', () => {

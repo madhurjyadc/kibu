@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { HelperBridge } from './helper-bridge.js'
 import type {
   AppInfo,
+  AutomationStatus,
   CaptureResult,
   Capability,
   DisplayInfo,
@@ -67,6 +68,13 @@ export class MacOsAdapter implements OsAdapter {
   async requestPermission(p: OsPermission): Promise<PermissionStatus> {
     const res = await this.bridge.call<{ granted: boolean }>('requestPermission', { permission: p }, 30_000)
     return { permission: p, granted: res.granted, purpose: PERMISSION_PURPOSE[p] }
+  }
+
+  async automationPermission(bundleId: string, ask: boolean): Promise<AutomationStatus> {
+    if (!this.bridge.available) return 'unknown'
+    // Asking waits for the person to answer a system dialog.
+    const res = await this.bridge.call<{ status: AutomationStatus }>('automation', { bundleId, ask }, ask ? 180_000 : 10_000)
+    return res.status
   }
 
   listApps(): Promise<AppInfo[]> {

@@ -1,0 +1,65 @@
+# Packages Kibu as a signed, notarized macOS app.
+#
+#   npm run dist      builds dist/Kibu-<version>-arm64.dmg (and .zip for updates)
+#   npm run release   also uploads them to a draft GitHub release
+#
+# Signing uses the "Developer ID Application" certificate in your keychain.
+# Notarization reads APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID
+# from the environment; see docs/RELEASING.md.
+appId: app.kibu.desktop
+productName: Kibu
+copyright: Copyright © 2026 Madhurjya Deep Chakravarty
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+# Playwright reads its own files from disk at run time.
+asarUnpack:
+  - node_modules/playwright/**
+  - node_modules/playwright-core/**
+
+# The app looks these up under process.resourcesPath/resources (src/main/index.ts).
+extraResources:
+  - from: resources/bin/kibu-helper
+    to: resources/bin/kibu-helper
+  - from: resources/trayTemplate.png
+    to: resources/trayTemplate.png
+  - from: resources/trayTemplate@2x.png
+    to: resources/trayTemplate@2x.png
+
+mac:
+  # The Swift helper is built for Apple silicon only (src/os/swift/build.sh).
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  icon: build/icon.icns
+  artifactName: Kibu-${version}-${arch}-mac.${ext}
+  category: public.app-category.productivity
+  minimumSystemVersion: "14.0"
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+  extendInfo:
+    NSAppleEventsUsageDescription: Kibu uses Calendar, Reminders, Notes, Mail, Finder and your browser on your behalf, only when you ask it to.
+    NSDesktopFolderUsageDescription: Kibu reads and tidies files on your Desktop when you ask it to.
+    NSDocumentsFolderUsageDescription: Kibu finds, organizes and renames files in Documents when you ask it to.
+    NSDownloadsFolderUsageDescription: Kibu finds, organizes and renames files in Downloads when you ask it to.
+
+dmg:
+  title: Kibu
+  artifactName: Kibu-${version}-${arch}.dmg
+
+publish:
+  provider: github
+  owner: madhurjyadc
+  repo: kibu
+  releaseType: draft

@@ -763,6 +763,17 @@ export class TaskRunner {
       }
       this.task.cost = addCost(this.task.cost, proposal)
       if (proposal.text) this.log('info', 'model', proposal.text)
+      // A declined request would be declined again; asking it to carry on only burns steps.
+      if (proposal.stopReason === 'refusal') {
+        this.log('warn', 'model', `the model declined this request (${proposal.refusal ?? 'unspecified'})`)
+        this.completeFrom({
+          success: false,
+          headline: 'The model declined to help with this one',
+          evidence: [],
+          unresolved: `declined by the model's safety checks (${proposal.refusal ?? 'unspecified'})`
+        })
+        return
+      }
 
       if (proposal.calls.length === 0) {
         // Prose with no action: either it is done, or it needs a nudge.
@@ -854,11 +865,13 @@ export class TaskRunner {
       return { content: `Refused: ${rejection}`, isError: true }
     }
 
-    // Opt-in belt and braces: confirm every world-changing action.
-    if (this.deps.confirmEveryAction && tool.capability !== 'user.interact') {
+    // Some inputs are confirmed every time, however much the task is allowed;
+    // the rest only when the user opted in to confirming every action.
+    const mustConfirm = tool.confirm?.(input) ?? null
+    if (mustConfirm || (this.deps.confirmEveryAction && tool.capability !== 'user.interact')) {
       const go = await this.ask({
         reason: 'authorization',
-        prompt: `Run ${call.name}?`,
+        prompt: mustConfirm ? `Kibu wants to ${mustConfirm}. Run it?` : `Run ${call.name}?`,
         allowFreeText: false,
         preview: { title: `${call.name}`, note: JSON.stringify(input) },
         options: [

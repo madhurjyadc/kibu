@@ -12,48 +12,82 @@ plainly what has been tested and what has not.
 
 ---
 
-## Running it
+## Installing it
+
+You need an Apple silicon Mac (M1 or later) on macOS 14+, [Node.js](https://nodejs.org) 22 or later, and Apple's
+command line tools (`xcode-select --install`). Then:
 
 ```bash
-npm install
-npm run helper:build   # compiles the Swift macOS helper
-npm run build
-npm start
+git clone https://github.com/madhurjyadc/kibu.git && cd kibu && npm install && npm run app
 ```
 
-For development with hot reload:
+That builds **Kibu.app** on your Mac, puts it in Applications and opens it.
+Press **⌥Space** from anywhere, or click Kibu's face in the menu bar. An app
+you build yourself opens without any Apple warning; because it is signed only
+for this build, macOS may ask for its permissions again after you update.
 
-```bash
-npm run dev
-```
+To update: `git pull && npm install && npm run app`.
 
-You will need:
+For development with hot reload, use `npm run dev` instead (macOS will call it
+"Electron" in its permission dialogs). Signed, notarized releases for people
+who don't want to build are described in [`docs/RELEASING.md`](docs/RELEASING.md).
 
-- **macOS 14 or later** (the helper targets `arm64-apple-macosx14.0`)
-- **Xcode command line tools**, for `swiftc`
+### What Kibu thinks with
+
 - **A model connection for open-ended app/browser tasks**. Local file search, arithmetic,
   and capability help work without a model key. API keys can be added under Settings and encrypted with
   the macOS Keychain. No shared key is bundled.
   - **A TypeSafe key** (`TYPESAFE_API_KEY`) for Jev. On its own this covers
     organising a folder, finding a file and renaming files — no planning model
     involved, ~100ms decisions, $0.042/MTok input with output free.
-  - **An Anthropic key** (`ANTHROPIC_API_KEY`) for the planning model, needed
-    for anything open-ended.
+  - **An Anthropic key** (`ANTHROPIC_API_KEY`) for the planning model
+    (Claude Sonnet 5.5), needed for anything open-ended.
 
   They are different providers with different keys. See *Doing tasks without
   the planning model* below for exactly which requests need which.
 
-  **No Anthropic credit?** If Claude Code is installed and signed in on this
-  Mac, turn on *think with the Claude Code on this Mac* under `/tune` and Kibu
-  plans through it instead — see *Planning through Claude Code* below.
+  **Already use Claude Code?** Then there is nothing to set up: the tour
+  offers to think with the Claude Code on your Mac, using your own login —
+  see *Planning through Claude Code* below. Codex and OpenCode work the same way.
 
-On first run, grant **Accessibility** permission when asked if you want Kibu to
-read and control native app windows. Without it, file and browser work still
-work; native app control does not, and Kibu will say so rather than guess.
+## First run
+
+Kibu opens on a one-minute tour: one card per thing it can do, each with a
+line of explanation, something you could type, and — on the same card — the
+macOS permissions that thing needs. Nothing is asked for until you tap
+"Allow"; every card can be skipped. `/setup` shows it again, and Settings →
+Permissions lists everything in one place.
+
+1. **Hello** — and the shortcut, ⌥ Option + Space (not ⌘ Command + Space,
+   which is Spotlight's). Click it and press a new chord to change it; if
+   another app already holds it, Kibu picks the next free one and shows that.
+2. **How Kibu thinks** — pick one: each coding app found on this Mac (Claude
+   Code, Codex, OpenCode — using their own login), or an Anthropic API key.
+   The same card asks for the optional TypeSafe key for Jev.
+3. **Files** — Desktop, Documents and Downloads.
+4. **Your day** — Calendar, Reminders, Notes and Mail.
+5. **The web** — each installed browser, with its "Allow JavaScript from Apple Events" step spelled out.
+6. **Other apps** — Accessibility, Screen Recording, Finder and System Events.
+7. **Remember & remind** — notifications.
+8. **That's it** — what it thinks with, whether Jev is on, how many
+   permissions are allowed, and a few requests to try.
+
+Reading a permission never prompts. A denied one links to the right page of
+System Settings.
+
+## Where the pet lives
+
+The pet lives on your desktop: drag it anywhere, drop files on it, right-click
+it to dance or nap. If it is ever in the way, Settings → *The pet* has two
+quieter options: **only while working** (it stays tucked away and peeks up from
+the bottom-right corner while it works, needs an answer, runs a timer or has a
+reminder due; rest the pointer on the right edge near the bottom to call it)
+and **menu bar only** (status next to the menu bar face, results as
+notifications).
 
 ## Using it
 
-Kibu sits on your desktop. Click it, or press **⌘⇧K**, to open its companion
+Kibu sits on your desktop. Click it, press **⌥Space**, or click its face in the menu bar to open its companion
 workspace. The minimal home has one input and Find, Organize, and Rename actions.
 The clock opens History; the sliders open Settings.
 
@@ -83,6 +117,7 @@ Slash commands remain available in the composer as keyboard shortcuts:
 | `/stop` | stop what it is doing |
 | `/keys` | the two API keys |
 | `/tune` | limits, habits and macOS permissions |
+| `/setup` | the one-minute tour again, with every permission |
 | `/bench` | time every route on this Mac: Jev, the macOS index, local code |
 | `/help` | all of the above |
 
@@ -245,11 +280,13 @@ stopped by the same code that stops the API planner.
 
 Two honest caveats:
 
-- **This is for running Kibu on your own machine with your own login.**
-  Anthropic does not permit third-party products to offer claude.ai login or
-  subscription rate limits to *their* users without prior approval
+- **This is for running Kibu on your own machine with your own login** —
+  which is how Kibu is installed today: everyone builds and runs their own
+  copy. Anthropic does not permit third-party products to offer claude.ai
+  login or subscription rate limits to *their* users without prior approval
   ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)),
-  so a build handed to other people has to use an API key.
+  so a signed build distributed to other people (`docs/RELEASING.md`) should
+  lead with an API key instead.
 - **Nothing is billed, so the per-task spending limit does not apply on this
   path** — it reports no cost rather than a number nobody is charged. The step
   limit and the wall-clock limit are what bound a task here, and planning
@@ -264,14 +301,21 @@ then arbitrary code execution. Instead:
 
 - **There is no shell.** Commands run through `execFile` with an argv array,
   so pipes, redirects, `;`, backticks and `$(...)` are inert text.
-- **Only allowlisted programs run** — `mkdir`, `cp`, `mv`, `ls`, `git`, `npm`,
-  `open`, `node`, `python3` and a few more. `rm`, `sudo`, `curl` and their
-  relatives are absent by design rather than filtered afterwards, and
-  dangerous subcommands (`git push`, `npm publish`) are refused.
-- **Every path argument must resolve inside your home folder** and never into
-  a protected location — including via `../..`.
+- **Only allowlisted programs run** — `mkdir`, `cp`, `mv`, `ls`, `cat`, `git`,
+  `open` and a few more. `rm`, `sudo`, `curl` and their relatives are absent
+  by design rather than filtered afterwards. Git is limited to a list of
+  everyday subcommands, and every way of making it run another program
+  (`-c`, aliases, `--upload-pack`, `ext::` URLs) is refused.
+- **Programs that run code ask every time.** `node`, `python3` and `npm` can
+  do anything your account can, so no folder permission covers them: Kibu
+  shows you the exact command and waits for your OK on every run.
+- **`open` will not launch anything.** Apps, scripts, installers and files
+  marked executable are refused, and so are URL schemes other than web pages.
+- **Every path argument, and the folder a command runs in, must resolve
+  inside your home folder** and never into a protected location — including
+  via `../..` — and inside what the task has been allowed to read or write.
 
-`vetCommand` is that boundary, and it is tested directly.
+`vetCommand` and `commandScopes` are that boundary, and they are tested directly.
 
 ### Jev
 
@@ -378,7 +422,7 @@ and anything done through synthetic input are not reversible.
 npm test
 ```
 
-214 tests covering memory (what is kept, refused, recalled and forgotten), authorization, file operations, the task loop, the
+270 tests covering memory (what is kept, refused, recalled and forgotten), authorization, file operations, the task loop, the
 planner-free workflows (files and apps), time reading, Jev's request shape and
 caution-clamping, the planner's tool narrowing and widening, the persistent
 Claude Code session, undo, crash recovery, and a real browser workflow against

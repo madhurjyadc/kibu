@@ -32,7 +32,7 @@ export class ManagedBrowser implements BrowserSession {
       await fs.mkdir(this.profileDir, { recursive: true })
       await fs.mkdir(this.downloadDir, { recursive: true })
       this.log('info', `opening managed browser profile at ${this.profileDir}`)
-      this.context = await chromium.launchPersistentContext(this.profileDir, {
+      const options = {
         // Visible by default: the user must be able to see what Kibu is doing
         // in the browser, and complete sign-ins there themselves.
         headless: process.env.KIBU_BROWSER_HEADLESS === '1',
@@ -40,7 +40,25 @@ export class ManagedBrowser implements BrowserSession {
         downloadsPath: this.downloadDir,
         viewport: { width: 1280, height: 860 },
         args: ['--no-first-run', '--no-default-browser-check']
-      })
+      }
+      // Playwright's own Chromium exists only where someone downloaded it (a
+      // developer's Mac). An installed Kibu drives the Chrome or Edge already
+      // on the machine instead, still in Kibu's own separate profile.
+      let lastError: unknown = null
+      for (const channel of [undefined, 'chrome', 'msedge'] as const) {
+        try {
+          this.context = await chromium.launchPersistentContext(this.profileDir, { ...options, ...(channel ? { channel } : {}) })
+          break
+        } catch (err) {
+          lastError = err
+          this.log('warn', `could not start ${channel ?? 'the bundled Chromium'}: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)
+        }
+      }
+      if (!this.context) {
+        throw new Error(
+          `I could not start a browser to work in. Install Google Chrome, then try again. (${lastError instanceof Error ? lastError.message.split('\n')[0] : String(lastError)})`
+        )
+      }
       this.browser = this.context.browser()
     }
     const pages = this.context.pages()

@@ -9,8 +9,11 @@ import { Store } from './services/db.js'
 import { Secrets } from './services/secrets.js'
 import { RuntimeHost } from './services/runtime-host.js'
 import { DesktopSession } from './services/desktop-session.js'
+import { startUpdateChecks } from './services/updates.js'
+import { Setup, isSetupId } from './services/setup.js'
 import { undoTask } from './services/undo.js'
-import { createPetWindow, setPetHitRects, setPetInteractive, updatePetHitTest } from './windows/pet.js'
+import { PetPresence, createPetWindow, isPetHeld, setPetHitRects, setPetInteractive, updatePetHitTest } from './windows/pet.js'
+import { dueItems, type BrainSnapshot } from '../shared/brain.js'
 import {
   createPanelWindow,
   positionPanelNearPet,
@@ -40,6 +43,7 @@ import type {
 } from '../shared/protocol.js'
 import { isTerminal, defaultLimits, emptyAuthorization, type PetState, type TaskState } from '../shared/types.js'
 import { normalizePath } from '../runtime/authorization.js'
+import { wouldLaunch } from '../runtime/tools/shell.js'
 import { claudeCodeAvailable } from '../runtime/model/claude-code-planner.js'
 import { codingAppAvailable, codingAppStatus } from '../runtime/model/coding-apps.js'
 
@@ -55,11 +59,20 @@ let secrets: Secrets
 let runtime: RuntimeHost
 let desktopSession: DesktopSession
 let petWindow: BrowserWindow | null = null
+/** Decides when the pet is on screen; see PetPresence. */
+const petPresence = new PetPresence({
+  win: () => petWindow,
+  mode: () => settings.petMode,
+  presence: (visible) => { if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send(IPC.onPetPresence, visible) },
+  displayAt: (point) => screen.getDisplayNearestPoint(point).bounds,
+  held: isPetHeld
+})
 let panelWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let currentTask: TaskState | null = null
 let settings: Settings = { ...DEFAULT_SETTINGS }
 let osAdapter: ReturnType<typeof createOsAdapter>
+let setup: Setup
 /** Set during shutdown so the runtime's exit is not reported as a crash. */
 let quitting = false
 /**
@@ -96,11 +109,18 @@ function paths() {
  * Settings
  * ------------------------------------------------------------------ */
 
+/** The shortcut Kibu shipped with before ⌥Space; still on it means it was never chosen. */
+const OLD_DEFAULT_SHORTCUT = 'CommandOrControl+Shift+K'
+
 function loadSettings(): Settings {
   const raw = store.getSetting('settings')
   if (!raw) return { ...DEFAULT_SETTINGS }
   try {
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) }
+    const saved = JSON.parse(raw) as Partial<Settings>
+    if (saved.shortcut === OLD_DEFAULT_SHORTCUT) delete saved.shortcut
+    // "peek" was briefly the default; a pet nobody chose to hide belongs on the desktop.
+    if (!saved.petModeChosen) delete saved.petMode
+    return { ...DEFAULT_SETTINGS, ...saved }
   } catch {
     return { ...DEFAULT_SETTINGS }
   }
@@ -117,6 +137,11 @@ function saveSettings(next: Partial<Settings>): Settings {
  * ------------------------------------------------------------------ */
 
 function broadcast(channel: string, payload: unknown): void {
+  // A running timer or a due reminder is shown on the pet, so it comes out for them.
+  if (channel === IPC.onBrain) {
+    const state = payload as BrainSnapshot
+    petPresence.setAttention(!!state.timer || dueItems(state).length > 0)
+  }
   for (const win of [petWindow, panelWindow]) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
   }
@@ -132,8 +157,10 @@ function followCursor(): void {
   let last = ''
   const timer = setInterval(() => {
     if (!petWindow || petWindow.isDestroyed()) return clearInterval(timer)
-    if (!petWindow.isVisible()) return
     const at = screen.getCursorScreenPoint()
+    // Resting the pointer at the screen's right edge calls a tucked-away pet.
+    petPresence.sample(at)
+    if (!petWindow.isVisible()) return
     // The same sample decides whether the pet catches the mouse, so it is
     // already solid by the time the pointer reaches it.
     updatePetHitTest(petWindow, at)
@@ -147,8 +174,19 @@ function followCursor(): void {
   }, 30)
 }
 
+/** A result headline as notification text: markdown marks dropped, one short paragraph. */
+function plainHeadline(markdown: string): string {
+  const text = markdown.replace(/[*_`#>]/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\s+/g, ' ').trim()
+  return text.length > 180 ? `${text.slice(0, 177)}…` : text
+}
+
+/** What the menu bar says next to Kibu's face while it works, when there is no pet to say it. */
+const TRAY_TITLE: Partial<Record<PetState, string>> = { thinking: 'Thinking', working: 'Working', waiting: 'Needs you' }
+
 function setPetState(state: PetState): void {
   broadcast(IPC.onPetState, state)
+  petPresence.setState(state)
+  tray?.setTitle(settings.petMode === 'menubar' ? TRAY_TITLE[state] ?? '' : '')
 }
 
 /* ------------------------------------------------------------------ *
@@ -293,8 +331,15 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
       if (msg.task.summary && ['succeeded', 'failed'].includes(msg.task.status)) {
         lastFinished = { id: msg.task.id, request: msg.task.request, headline: msg.task.summary.headline, at: Date.now() }
       }
+      const finishedNow = ['succeeded', 'failed'].includes(msg.task.status) && store.getTask(msg.task.id)?.status !== msg.task.status
       store.saveTask(msg.task)
       broadcast(IPC.onTaskUpdate, msg.task)
+      // With no pet on the desktop, a result nobody is looking at arrives as a notification.
+      if (finishedNow && settings.petMode === 'menubar' && !panelWindow?.isVisible() && Notification.isSupported() && msg.task.summary) {
+        const done = new Notification({ title: msg.task.status === 'succeeded' ? 'Kibu is done' : 'Kibu couldn’t finish', body: plainHeadline(msg.task.summary.headline) })
+        done.on('click', () => togglePanelShow())
+        done.show()
+      }
       // A task that is waiting on an answer must not wait invisibly: the panel
       // hides itself on blur, so bring it back when a question appears.
       if (msg.task.question && panelWindow && !panelWindow.isDestroyed() && !panelWindow.isVisible()) {
@@ -507,13 +552,28 @@ function broadcastPanelState(): void {
   broadcast(IPC.onPanelState, { docked: isPanelDocked(), pinned: isPanelPinned() })
 }
 
+/**
+ * Kibu opens like Spotlight: one chord, from anywhere. ⌥Space sits next to
+ * Spotlight's ⌘Space and takes one hand. If another app already holds the
+ * chosen key, the next free one is used and saved, so the key shown in the
+ * menu and in setup is always the one that works.
+ */
+const SHORTCUT_FALLBACKS = ['Alt+Space', 'CommandOrControl+Shift+Space', 'CommandOrControl+Shift+K']
+
 function registerShortcut(accelerator: string): boolean {
   globalShortcut.unregisterAll()
-  try {
-    return globalShortcut.register(accelerator, () => togglePanel(true))
-  } catch {
-    return false
+  for (const key of [accelerator, ...SHORTCUT_FALLBACKS.filter((k) => k !== accelerator)]) {
+    try {
+      if (globalShortcut.register(key, () => togglePanel(true))) {
+        if (key !== accelerator) {
+          console.warn(`The shortcut ${accelerator} is taken by another app; using ${key} instead.`)
+          saveSettings({ shortcut: key })
+        }
+        return key === accelerator
+      }
+    } catch { /* an accelerator Electron cannot parse: try the next */ }
   }
+  return false
 }
 
 /** Puts the pet somewhere visible, for when it has been dragged off-screen. */
@@ -521,7 +581,7 @@ function recentrePet(): void {
   if (!petWindow || petWindow.isDestroyed()) return
   const display = screen.getPrimaryDisplay().workArea
   petWindow.setPosition(display.x + display.width - 200, display.y + display.height - 230, false)
-  petWindow.showInactive()
+  if (settings.petMode !== 'menubar') petWindow.showInactive()
   const [x = -1, y = -1] = petWindow.getPosition()
   saveSettings({ petX: x, petY: y })
 }
@@ -532,12 +592,14 @@ function createTray(): void {
   const image = existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
   image.setTemplateImage(true)
   tray = new Tray(image)
-  tray.setToolTip('Kibu — click to open, or press the shortcut')
-  tray.setContextMenu(
+  tray.setToolTip('Kibu — click to open, right-click for more')
+  // One click opens Kibu. A context menu set with setContextMenu would take
+  // the left click on macOS, so it is popped up on right-click instead.
+  const menu = (): Electron.Menu =>
     Menu.buildFromTemplate([
       { label: 'Open Kibu', accelerator: settings.shortcut, click: () => togglePanel(true) },
       { label: 'Workspace & timers', click: openBrain },
-      { label: 'Bring pet back into view', click: () => recentrePet() },
+      { label: 'Show the pet', click: () => { recentrePet(); petPresence.showFor(5000) } },
       { label: 'Center the panel', click: () => recenterPanel() },
       { type: 'separator' },
       {
@@ -549,8 +611,8 @@ function createTray(): void {
       { type: 'separator' },
       { label: 'Quit Kibu', click: () => app.quit() }
     ])
-  )
   tray.on('click', () => togglePanel(true))
+  tray.on('right-click', () => tray?.popUpContextMenu(menu()))
 }
 
 /* ------------------------------------------------------------------ *
@@ -681,6 +743,18 @@ function registerIpc(): void {
     return osAdapter.requestPermission(p as 'accessibility')
   })
 
+  ipcMain.handle(IPC.setupGet, () => setup.list())
+  ipcMain.handle(IPC.setupRequest, async (_e, id: unknown) => {
+    if (!isSetupId(id)) throw new Error('Unknown permission.')
+    // A system dialog takes focus from the panel; that is not the person leaving.
+    panelDialogOpen = true
+    try { return await setup.request(id) } finally { panelDialogOpen = false }
+  })
+  ipcMain.handle(IPC.setupOpenSettings, (_e, id: unknown) => {
+    if (!isSetupId(id)) throw new Error('Unknown permission.')
+    return setup.openSettings(id)
+  })
+
   ipcMain.handle(IPC.secretsSet, (_e, key: string) => {
     if (typeof key !== 'string') throw new Error('key must be a string')
     return secrets.setApiKey(key)
@@ -729,6 +803,9 @@ function registerIpc(): void {
       if (!app.isPackaged) throw new Error('Open at login is available in an installed Kibu build. During development, keep Kibu running for reminders.')
       app.setLoginItemSettings({ openAtLogin: next.launchAtLogin })
     }
+    if (next.onboarded !== undefined && typeof next.onboarded !== 'boolean') throw new Error('Invalid setup state.')
+    if (next.petMode !== undefined && !['peek', 'menubar', 'desktop'].includes(next.petMode)) throw new Error('Unknown place for the pet.')
+    if (next.petMode !== undefined) next.petModeChosen = true
     if (next.codingApp !== undefined && !['claude-code', 'codex', 'opencode'].includes(next.codingApp)) throw new Error('Unknown coding app.')
     // A model name ends up as a command-line argument: it may only look like one.
     for (const key of ['codexModel', 'opencodeModel'] as const) {
@@ -736,13 +813,22 @@ function registerIpc(): void {
       if (value !== undefined && (typeof value !== 'string' || !/^(?!-)[A-Za-z0-9._/:@-]{0,100}$/.test(value.trim()))) throw new Error('That does not look like a model name.')
       if (typeof value === 'string') next[key] = value.trim()
     }
+    if (next.shortcut !== undefined && (typeof next.shortcut !== 'string' || !/^[A-Za-z0-9+]{1,60}$/.test(next.shortcut))) throw new Error('That is not a shortcut.')
+    if (next.shortcut !== undefined && /^(Command|CommandOrControl|CmdOrCtrl|Cmd)\+Space$/.test(next.shortcut)) throw new Error('⌘ Command + Space opens Spotlight. Pick another — ⌥ Option + Space is the default.')
     const before = settings.shortcut
     const updated = saveSettings(next ?? {})
+    // A key another app holds falls back to a free one, which is saved: report that one.
     if (updated.shortcut !== before) registerShortcut(updated.shortcut)
-    return updated
+    if (next.petMode !== undefined) {
+      petPresence.update()
+      tray?.setTitle('')
+    }
+    return settings
   })
 
-  // Path-taking shell operations are constrained: reveal only, never execute.
+  // Path-taking shell operations are constrained: documents and folders open,
+  // but anything that would run (an app, a script, an installer) is only
+  // revealed in Finder, so a result link can never launch code.
   ipcMain.handle(IPC.revealPath, (_e, p: string) => {
     const path = normalizePath(String(p))
     if (!existsSync(path)) throw new Error('that path no longer exists')
@@ -751,6 +837,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC.openPath, async (_e, p: string) => {
     const path = normalizePath(String(p))
     if (!existsSync(path)) throw new Error('that path no longer exists')
+    if (wouldLaunch(path)) {
+      shell.showItemInFolder(path)
+      return
+    }
     const error = await shell.openPath(path)
     if (error) throw new Error(error)
   })
@@ -900,8 +990,11 @@ if (!singleInstance) {
       })
     }
 
+    startUpdateChecks((message) => console.log('[updates]', message))
+
     const p = paths()
     osAdapter = createOsAdapter(p.helper)
+    setup = new Setup(osAdapter, store)
     desktopSession = new DesktopSession()
     desktopSession.on('changed', (active: boolean) => broadcast(IPC.onDesktopSession, active))
     desktopSession.on('stop-requested', (taskId: string | null) => {
@@ -967,7 +1060,8 @@ if (!singleInstance) {
 
     petWindow = createPetWindow(
       { preload: p.preload, rendererUrl: RENDERER_URL, rendererFile: p.rendererFile },
-      { x: settings.petX, y: settings.petY }
+      { x: settings.petX, y: settings.petY },
+      settings.petMode === 'desktop'
     )
     petWindow.on('moved', () => {
       const [x = -1, y = -1] = petWindow!.getPosition()
@@ -996,12 +1090,18 @@ if (!singleInstance) {
       saveSettings({ panelX: x, panelY: y })
     })
 
+    // First run: open straight onto setup rather than waiting to be found.
+    if (!settings.onboarded) panelWindow.webContents.once('did-finish-load', () => setTimeout(togglePanelShow, 600))
+
     brainClock = setInterval(tickBrain, 1000)
     powerMonitor.on('suspend', () => { brainSleeping = true })
     powerMonitor.on('resume', () => { brainSleeping = false; tickBrain() })
     powerMonitor.on('lock-screen', () => { brainLocked = true })
     powerMonitor.on('unlock-screen', () => { brainLocked = false; tickBrain() })
-    petWindow.webContents.on('did-finish-load', tickBrain)
+    petWindow.webContents.on('did-finish-load', () => {
+      tickBrain()
+      broadcast(IPC.onBrain, brain.snapshot())
+    })
     createTray()
     if (!registerShortcut(settings.shortcut)) {
       console.warn(`Could not register the global shortcut ${settings.shortcut}; it may be taken.`)

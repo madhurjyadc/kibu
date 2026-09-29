@@ -14,6 +14,9 @@ import { desktopTools, syntheticInputTools } from '../src/runtime/tools/desktop.
 import { defaultLimits, emptyAuthorization, type TaskState } from '../src/shared/types.js'
 import { DEFAULT_MODEL_CONFIG } from '../src/shared/protocol.js'
 
+/** A script step that makes the scripted model decline, the way a safety check would. */
+const REFUSE = '__refuse__'
+
 /** A planner that reads from a script instead of calling a model. */
 class ScriptedPlanner implements PlannerLike {
   public results: { content: string; isError: boolean }[] = []
@@ -32,6 +35,9 @@ class ScriptedPlanner implements PlannerLike {
   async propose(): Promise<PlannerProposal> {
     const calls = this.script[this.turn] ?? []
     this.turn++
+    if (calls[0]?.name === REFUSE) {
+      return { calls: [], text: '', stopReason: 'refusal', refusal: 'cyber', usd: 0.001, inputTokens: 100, outputTokens: 0 }
+    }
     return {
       calls: calls.map((c, i) => ({ id: `call-${this.turn}-${i}`, name: c.name, input: c.input })),
       text: calls.length ? '' : 'nothing left to do',
@@ -340,6 +346,15 @@ describe('the task loop end to end', () => {
     const final = await h.runner.run()
     assert.equal(final.status, 'failed')
     assert.match(final.summary!.headline, /3-step limit/)
+  })
+
+  test('a declined request ends the task at once instead of being asked again', async () => {
+    const task = makeTask()
+    const h = harness(task, Array(5).fill([{ name: REFUSE, input: {} }]))
+    const final = await h.runner.run()
+    assert.equal(final.status, 'failed')
+    assert.match(final.summary!.headline, /declined/)
+    assert.equal(final.cost.calls, 1)
   })
 
   test('the spending limit ends the task', async () => {

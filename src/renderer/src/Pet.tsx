@@ -32,6 +32,7 @@ const PET_RUBS = 4
 const PET_WINDOW_MS = 1400
 
 export function Pet(): React.JSX.Element {
+  const [presence, setPresence] = useState<'arriving' | 'leaving' | null>(null)
   const brain = useBrain()
   const now = useNow()
   const timer = brain.timer
@@ -220,6 +221,8 @@ export function Pet(): React.JSX.Element {
     })
     const offDesktop = window.kibu.onDesktopSession(setDesktopActive)
     const offPlay = window.kibu.onPetPlay((action) => play(action))
+    // Out of sight until there is something to see: slide up on arrival, down on leaving.
+    const offPresence = window.kibu.onPetPresence((visible) => setPresence(visible ? 'arriving' : 'leaving'))
     // Eyes follow the mouse anywhere on screen, easing off with distance so a
     // far-away cursor gets a glance rather than a stare.
     let lastAt = ''
@@ -238,7 +241,7 @@ export function Pet(): React.JSX.Element {
       if (dist < 90) poke()
     })
     return () => {
-      offDeleted(); offState(); offTask(); offDesktop(); offCursor(); offPlay()
+      offDeleted(); offState(); offTask(); offDesktop(); offCursor(); offPlay(); offPresence()
       clearInterval(settingsTimer)
       if (bubbleTimer.current) clearTimeout(bubbleTimer.current)
       if (chatTimer.current) clearTimeout(chatTimer.current)
@@ -517,7 +520,7 @@ export function Pet(): React.JSX.Element {
 
   return (
     <div
-      className={`pet-root ${dropping ? 'dropping' : ''} ${desktopActive ? 'driving' : ''}`}
+      className={`pet-root ${dropping ? 'dropping' : ''} ${desktopActive ? 'driving' : ''} ${presence ? `is-${presence}` : ''}`}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseLeave={(e) => {

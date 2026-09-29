@@ -20,7 +20,7 @@ export interface PetWindowDeps {
  * the user's typing. It is transparent and frameless — the visible pet is just
  * what the renderer paints.
  */
-export function createPetWindow(deps: PetWindowDeps, saved: { x: number; y: number }): BrowserWindow {
+export function createPetWindow(deps: PetWindowDeps, saved: { x: number; y: number }, showAtStart = true): BrowserWindow {
   const display = screen.getPrimaryDisplay()
   const x = saved.x >= 0 ? saved.x : display.workArea.x + display.workArea.width - PET_WIDTH - 40
   const y = saved.y >= 0 ? saved.y : display.workArea.y + display.workArea.height - PET_HEIGHT - 40
@@ -68,7 +68,7 @@ export function createPetWindow(deps: PetWindowDeps, saved: { x: number; y: numb
   if (deps.rendererUrl) void win.loadURL(target)
   else void win.loadFile(deps.rendererFile, { hash: 'pet' })
 
-  win.once('ready-to-show', () => win.showInactive())
+  if (showAtStart) win.once('ready-to-show', () => win.showInactive())
 
   // Dock icon stays hidden: Kibu is an accessory, not a windowed app.
   if (process.platform === 'darwin') app.dock?.hide()
@@ -118,3 +118,10 @@ export function updatePetHitTest(win: BrowserWindow, cursor: { x: number; y: num
 }
 
 export { PET_WIDTH, PET_HEIGHT }
+
+/** True while a drag or a file drop is holding the pet solid. */
+export function isPetHeld(): boolean {
+  return held
+}
+
+export { PetPresence, type PetMode } from './pet-presence.js'

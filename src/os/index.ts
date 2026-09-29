@@ -19,6 +19,9 @@ class UnimplementedAdapter implements OsAdapter {
   async requestPermission(p: OsPermission): Promise<PermissionStatus> {
     return { permission: p, granted: false, purpose: 'Not implemented on this platform yet.' }
   }
+  async automationPermission(): Promise<'not-installed'> {
+    return 'not-installed'
+  }
   private fail(c: Capability): never {
     throw new UnsupportedCapabilityError(c)
   }

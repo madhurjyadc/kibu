@@ -44,7 +44,13 @@ struct AnyCodable: Codable {
     }
 }
 
+/// Responses can come from the main queue and from the automation queue at
+/// once; one lock keeps each line whole.
+let writeLock = NSLock()
+
 func respond(id: String, ok: Bool, value: Any?, error: String?) {
+    writeLock.lock()
+    defer { writeLock.unlock() }
     var payload: [String: Any] = ["id": id, "ok": ok]
     if let value = value { payload["value"] = value }
     if let error = error { payload["error"] = error }
@@ -477,6 +483,41 @@ func listDisplays() -> [[String: Any]] {
 
 // MARK: - Dispatch
 
+// MARK: - Automation (Apple Events) permission
+
+/// Whether Kibu may send Apple Events to an app: "granted", "denied",
+/// "not-asked", "not-running" or "not-installed". With `ask`, macOS shows its
+/// "Kibu wants to control …" dialog when the person has not answered yet; an
+/// app that is not open is started hidden for the question and quit after.
+func automationStatus(bundleId: String, ask: Bool) -> String {
+    guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return "not-installed" }
+    var launched: NSRunningApplication? = nil
+    if NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty {
+        if !ask { return "not-running" }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = false
+        config.hides = true
+        config.addsToRecentItems = false
+        let opened = DispatchSemaphore(value: 0)
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { app, _ in
+            launched = app
+            opened.signal()
+        }
+        _ = opened.wait(timeout: .now() + 15)
+        for _ in 0..<50 where !(launched?.isFinishedLaunching ?? true) { usleep(100_000) }
+    }
+    let target = NSAppleEventDescriptor(bundleIdentifier: bundleId)
+    let err = AEDeterminePermissionToAutomateTarget(target.aeDesc, typeWildCard, typeWildCard, ask)
+    if let app = launched { app.terminate() }
+    switch Int(err) {
+    case Int(noErr): return "granted"
+    case -1743: return "denied"          // errAEEventNotPermitted
+    case -1744: return "not-asked"       // errAEEventWouldRequireUserConsent
+    case -600: return "not-running"      // procNotFound
+    default: return "unknown"
+    }
+}
+
 func handle(_ req: Request) {
     let args = req.args ?? [:]
     func str(_ k: String) -> String? { args[k]?.value as? String }
@@ -536,6 +577,11 @@ func handle(_ req: Request) {
             } else {
                 respond(id: req.id, ok: false, value: nil, error: "unknown permission \(which)")
             }
+
+        case "automation":
+            guard let bundleId = str("bundleId") else { throw HelperError(message: "bundleId required") }
+            let ask = (args["ask"]?.value as? Bool) ?? false
+            respond(id: req.id, ok: true, value: ["status": automationStatus(bundleId: bundleId, ask: ask)], error: nil)
 
         case "listApps":
             respond(id: req.id, ok: true, value: runningApps(), error: nil)
@@ -656,6 +702,12 @@ DispatchQueue.global(qos: .userInitiated).async {
         if req.op == "shutdown" {
             respond(id: req.id, ok: true, value: ["bye": true], error: nil)
             exit(0)
+        }
+        // Asking for automation waits on the person answering a system
+        // dialog; everything else keeps running while it does.
+        if req.op == "automation" {
+            DispatchQueue.global(qos: .userInitiated).async { handle(req) }
+            continue
         }
         DispatchQueue.main.sync { handle(req) }
     }
