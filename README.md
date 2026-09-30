@@ -32,8 +32,7 @@ for this build, macOS may ask for its permissions again after you update.
 To update: `git pull && npm install && npm run app`.
 
 For development with hot reload, use `npm run dev` instead (macOS will call it
-"Electron" in its permission dialogs). Signed, notarized releases for people
-who don't want to build are described in [`docs/RELEASING.md`](docs/RELEASING.md).
+"Electron" in its permission dialogs).
 
 ### What Kibu thinks with
 
@@ -288,7 +287,7 @@ Two honest caveats:
   copy. Anthropic does not permit third-party products to offer claude.ai
   login or subscription rate limits to *their* users without prior approval
   ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)),
-  so a signed build distributed to other people (`docs/RELEASING.md`) should
+  so a signed build distributed to other people should
   lead with an API key instead.
 - **Nothing is billed, so the per-task spending limit does not apply on this
   path**: it reports no cost rather than a number nobody is charged. The step
@@ -421,45 +420,17 @@ and anything done through synthetic input are not reversible.
 
 ## Tests
 
-```bash
-npm test
-```
-
-270 tests covering memory (what is kept, refused, recalled and forgotten), authorization, file operations, the task loop, the
+Kibu is developed against 270 automated tests covering memory (what is kept, refused, recalled and forgotten), authorization, file operations, the task loop, the
 planner-free workflows (files and apps), time reading, Jev's request shape and
 caution-clamping, the planner's tool narrowing and widening, the persistent
 Claude Code session, undo, crash recovery, and a real browser workflow against
 a local server. The app tests run against an in-memory fake Mac, never your
-real apps. See `docs/TESTED.md` for exactly what that does and does not prove.
+real apps. Alongside them, a live eval runs real requests through the real
+runner on a Mac, and interface checks drive the renderer against a fake bridge.
 
-### Live eval
-
-```bash
-npm run eval                 # every case
-npm run eval -- remind tab   # cases whose id contains a word
-TYPESAFE_API_KEY=… npm run eval   # with Jev instead of its local fallback
-```
-
-Runs real requests through the real runner on this Mac, with Claude Code
-planning, and reports which path handled each one, how long it took, and
-whether it worked. It only reads, or creates things it then removes with
-Kibu's own undo (notes go to Recently Deleted).
-
-### Interface checks
-
-```bash
-npm run test:ui
-```
-
-The Playwright renderer checks use a fake IPC bridge: they do not operate on
-user files, save real API keys, or call model providers. They cover editable
-suggestions, preserved drafts and attachments after failure, typed answers,
-expanded rename previews, navigation during work, connection saving, task
-controls, result links, undo, setup, and compact layouts. Screenshots are
-written to `/tmp/kibu-design` (override with `KIBU_SCREENSHOT_DIR`).
-
-See [`docs/DESIGN-REVIEW.md`](docs/DESIGN-REVIEW.md) for the redesign rationale,
-current capability audit, and recommended next work.
+The test suite and the eval stay in the maintainer's working copy, so this
+repository holds only what is needed to build and run Kibu. See
+`docs/TESTED.md` for exactly what they do and do not prove.
 
 ### Natural document search
 

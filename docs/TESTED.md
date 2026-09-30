@@ -10,7 +10,7 @@ Last updated: 29 September 2026, preparing the first public build.
 
 ## Verified live on a real Mac (26 September 2026)
 
-Run with `npm run eval` and a few direct script checks, on macOS with Calendar,
+Run with Kibu's live eval and a few direct script checks, on macOS with Calendar,
 Reminders, Notes and Chrome in use:
 
 - **Every app script, against the real apps.** Listing calendars and events,
@@ -29,7 +29,7 @@ Reminders, Notes and Chrome in use:
 
 Not live-verified: **Jev itself.** The eval ran with Jev's local fallback,
 because the TypeSafe key is encrypted for the app and was not available to the
-eval. Run `TYPESAFE_API_KEY=… npm run eval` to cover it. The Anthropic API
+eval. The Anthropic API
 planner path, Mail drafts (they open a window) and running a shortcut (there
 were none to run) were also not exercised live.
 
@@ -40,9 +40,11 @@ the planner answering from it ("who is my manager?" → from memory, 3.1s), an
 unrelated request getting no memory at all, and forgetting it. Recall ran on
 the local rules; Jev's relevance judgement is covered only by a stubbed test.
 
-## Verified by automated tests (`npm test`: 270 tests, all passing)
+## Verified by automated tests (270 tests, all passing)
 
-### Authorization (`test/files.test.ts`)
+The suite is kept in the maintainer's working copy, not in this repository.
+
+### Authorization
 - A path inside a granted root is allowed; a path outside is reported as a
   missing scope to escalate, not silently permitted.
 - A write root implies read on the same tree; a read root does **not** imply
@@ -54,7 +56,7 @@ the local rules; Jev's relevance judgement is covered only by a stubbed test.
 - Origins are matched by origin, not by URL prefix.
 - Granting the missing scopes makes the identical check pass afterwards.
 
-### File operations (`test/files.test.ts`)
+### File operations
 - Listing and searching return real on-disk entries, with depth and result
   limits honoured.
 - A move records an undo entry with both paths, and its verifier confirms the
@@ -66,7 +68,7 @@ the local rules; Jev's relevance judgement is covered only by a stubbed test.
 - A missing source is caught by the precondition before anything changes.
 - Tool scoping hides `files_move` from a read-only task.
 
-### The task loop (`test/runner.test.ts`)
+### The task loop
 Driven by a scripted planner through the real `TaskRunner`, real tools and the
 real filesystem:
 - A full organise-a-folder run: progress → list → preview → create folder →
@@ -89,7 +91,7 @@ real filesystem:
 - A synthetic click outside every display is rejected by its precondition.
 - A stale element reference is reported as needing re-observation.
 
-### Planner-free workflows (`test/workflows.test.ts`): real files, stubbed Jev
+### Planner-free workflows: real files, stubbed Jev
 Driven through the real `TaskRunner` with **no Anthropic key**, and a planner
 stub whose `propose()` fails the test if it is ever called:
 - A folder of mixed files is genuinely sorted into `Documents/`, `Images/` and
@@ -112,7 +114,7 @@ stub whose `propose()` fails the test if it is ever called:
   generic words ("final", "copy") never become folder names, type grouping is a
   pure function of the extension, and all five naming schemes are exact.
 
-### Jev (`test/jev.test.ts`): against a stubbed transport
+### Jev: against a stubbed transport
 The SDK's `fetch` override is used, so these cover *our use of the API* (the
 request sent and how the answer is treated) without a network or a key:
 - Routing sends one `choice` and one `noul` in a **single** request, to
@@ -129,7 +131,7 @@ request sent and how the answer is treated) without a network or a key:
   files into one request, and maps answers back by file name.
 - Cost accounting uses $0.042/MTok input with free output.
 
-### Progress, cost, undo, recovery (`test/loop.test.ts`)
+### Progress, cost, undo, recovery
 - Consecutive-failure budget, failure-streak reset, identical-error replan,
   staleness → reobserve, and six-identical-calls → replan. All deterministic.
 - Local routing without any model call; vague requests flagged for
@@ -141,7 +143,7 @@ request sent and how the answer is treated) without a network or a key:
 - A task left mid-flight is marked interrupted on next launch rather than
   resumed; a finished task is left alone.
 
-### First-run tour (`npm run test:ui`, 30 September 2026)
+### First-run tour (interface checks, 30 September 2026)
 - Against the fake bridge: a first run opens on the tour and "Skip tour"
   never shows it again; the shortcut can be changed by pressing a new chord;
   every installed coding app is offered by name beside an API key, and
@@ -159,7 +161,7 @@ request sent and how the answer is treated) without a network or a key:
   update feed. The copy into /Applications and the first launch from there
   have not been run on this Mac.
 
-### Where the pet is (`test/pet-presence.test.ts`)
+### Where the pet is
 - The default is always on the desktop. Peeking (an option), the pet is hidden when idle; it comes out while working or
   waiting, and for a running timer or a due reminder; it stays six seconds
   after a task finishes, then says it is leaving (so it can slide out) and
@@ -173,7 +175,7 @@ request sent and how the answer is treated) without a network or a key:
   and logged no errors and no shortcut fallback. How the slide looks, and the
   menu bar status text and notifications, were not watched on screen.
 
-### The command line (`test/shell.test.ts`)
+### The command line
 - `python3 -c`, `node -e` and `npm exec`/`install` are confirmed with the user
   every time, with the exact command, and need write access to the folder
   they run in.
@@ -188,7 +190,7 @@ request sent and how the answer is treated) without a network or a key:
   non-web URL schemes; the panel's "open" button reveals such files in Finder
   instead of opening them.
 
-### Browser workflow (`test/browser.test.ts`)
+### Browser workflow
 Against a real Chromium via Playwright and a local HTTP server:
 - Navigate, with verification comparing the landed origin.
 - Page inspection yields usable element references plus page text surfaced
@@ -220,9 +222,9 @@ The compiled Swift helper was run directly and confirmed to:
 
 **This was the biggest gap.** Neither an Anthropic key nor a TypeSafe key was
 available in the environment where this was built, so the loop has never been
-driven by a real planning model and has never made a real Jev call. Everything
-in `test/runner.test.ts` uses a scripted planner, and everything in
-`test/jev.test.ts` uses a stubbed transport.
+driven by a real planning model and has never made a real Jev call. Every
+task-loop test uses a scripted planner, and every Jev test uses a stubbed
+transport.
 
 What this means concretely:
 - The loop mechanics, validation, verification, limits and undo are proven.
@@ -273,8 +275,7 @@ stay empty until each one is actually exercised.
   `Contents/Resources/resources/bin`, and `Info.plist` carried the minimum
   macOS version and permission strings. Signing, notarization, Gatekeeper on
   a fresh Mac, Accessibility surviving a relaunch, and auto-update have not
-  been exercised, because no Developer ID certificate was available. Follow
-  the checklist in `docs/RELEASING.md` on the first draft release.
+  been exercised, because no Developer ID certificate was available.
 - **The planner moved to Claude Sonnet 5.5 without a live run.** The request
   shape type-checks against `@anthropic-ai/sdk` 0.127 (refusal fallback, and
   dropping stale thinking after the history is trimmed), and a refusal is

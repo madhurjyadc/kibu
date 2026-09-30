@@ -5,7 +5,7 @@
 #
 # Signing uses the "Developer ID Application" certificate in your keychain.
 # Notarization reads APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID
-# from the environment; see docs/RELEASING.md.
+# from the environment.
 appId: app.kibu.desktop
 productName: Kibu
 copyright: Copyright © 2026 Madhurjya Deep Chakravarty

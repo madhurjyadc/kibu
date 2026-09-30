@@ -4,7 +4,7 @@
   "description": "A desktop pet that does real work on your computer.",
   "main": "./out/main/index.js",
   "author": "Kibu",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,15 +13,10 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "helper:build": "bash src/os/swift/build.sh",
-    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
-    "icons": "node scripts/make-tray-icon.mjs",
-    "setup": "npm run icons && npm run helper:build && npm run build",
-    "app-icon": "node scripts/make-app-icon.mjs",
+    "setup": "npm run helper:build && npm run build",
     "app": "node scripts/install-app.mjs",
     "dist": "npm run helper:build && npm run build && electron-builder --mac --publish never",
-    "release": "npm run helper:build && npm run build && electron-builder --mac --publish always",
-    "test:ui": "node scripts/renderer-smoke.mjs",
-    "eval": "rm -rf dist-test && tsc -p tsconfig.test.json && node scripts/eval.mjs"
+    "release": "npm run helper:build && npm run build && electron-builder --mac --publish always"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

@@ -6,3 +6,14 @@ dist/
 src/os/swift/.build/
 resources/bin/
 dist-test/
+
+# Kept in the maintainer's copy only. The public repo holds what is needed to
+# build and run Kibu, and the docs for the people who do.
+website/
+launch/
+test/
+tsconfig.test.json
+scripts/*
+!scripts/install-app.mjs
+docs/DESIGN-REVIEW.md
+docs/RELEASING.md
