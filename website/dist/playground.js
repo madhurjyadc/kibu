@@ -27,7 +27,7 @@ export function initPlayground() {
   function hop(){animate(pet,[{transform:'translateY(0) scale(1)'},{transform:'translateY(-25px) scale(.97,1.04)',offset:.42},{transform:'translateY(0) scale(1.08,.92)',offset:.82},{transform:'translateY(0) scale(1)'}],{duration:620});}
   function love(){begin('pet');say('love',['oh. that’s nice.','you get me.','my favorite human.'][interactions%3]);const p=center();burst(effects,p.x,p.y,{hearts:true,color:'#ff6fa8',count:9});hop();settle();}
   pet.addEventListener('click',()=>{if(suppressClick){suppressClick=false;return}love();});
-  const surprises=[['cool','too cool for busywork.'],['sneeze','ah… ah… achoo.'],['starstruck','you’re kind of a big deal.'],['kiss','a little thank-you.'],['laugh','you had to be there.'],['wave','hi again, favorite human.']];
+  const surprises=[['cool','too cool for busywork.'],['sneeze','ah… ah… achoo.'],['starstruck','stars in my eyes. one on github, please?'],['kiss','a little thank-you.'],['laugh','you had to be there.'],['wave','hi again, favorite human.']];
   document.querySelectorAll('[data-play]').forEach(button=>button.addEventListener('click',()=>{
     const action=button.dataset.play;
     if(action==='nap'&&state==='nap'){begin('awake');say('yawn','five more minutes?');settle(2600);return;}

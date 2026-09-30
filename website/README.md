@@ -30,10 +30,9 @@ hold the site's address. Change them if the domain changes.
 ## Content and behavior
 
 - `dist/index.html`: the whole page and its social metadata. In order: the opening screen with the demo, what Kibu does, how you stay in control, the agent Kibu needs, install steps, permissions and privacy, the playground, and questions.
-- `dist/styles.css`: app-inspired obsidian/lime visual design and responsive layouts.
-- `dist/launch.css`: the sections added for launch. Hairline rows rather than cards, and 5 × 5 dot glyphs in the language of Kibu's face as icons.
+- `dist/site.css`: the one stylesheet, written in page order: tokens, header, the opening screen and demo, each section, the playground, then the rules for short windows and small screens.
 - `dist/app.js`: simulated Find, Organize, and Rename demos. No visitor files are accessed; no model connection is required.
-- `dist/assets/`: actual Kibu sprite exports from the app's `Sprite.tsx`, not new character artwork, plus `og.png` (the 1200 × 630 link preview) and `apple-touch-icon.png`.
+- `dist/assets/`: actual Kibu sprite exports from the app's `Sprite.tsx`, not new character artwork, plus `og.png` (the 1200 × 630 link preview), `apple-touch-icon.png` and the two self-hosted fonts.
 - `.openai/hosting.json`: the earlier Sites deployment identity.
 
 The GitHub destination is https://github.com/madhurjyadc/kibu. Every claim on the page comes from the app's own tour, the README or `docs/TESTED.md`: macOS 14 or later on Apple silicon, an agent to plan with (Claude Code, Codex, OpenCode or an Anthropic API key), installed from source with one command. It calls Kibu an early release and does not advertise a download, pricing, customer numbers, or unverified app integrations. When the app changes what it needs or does, change the page with it.
@@ -56,26 +55,39 @@ sample files only.
 - `dist/faces.js` reuses the actual app's face generator. Regenerate after changing
   the character with `node website/sync-character.mjs` from the repository root.
 
-## Responsive layout and typography
+## Layout and typography
 
-`dist/viewport.css` lets the hero grow with its content. Below 1050px the
-copy and demo stack; phones use a flat file window and full-width task controls.
-The design does not shrink text to fit a single screen. Section layouts,
-commands and touch controls also adapt to narrow screens.
+The desktop hero puts the four requirements in a compact two-column grid
+beneath the main actions, beside the demo. It fills larger windows and grows
+naturally on short screens. Below 900px the copy, facts and demo stack without
+forcing content into the first viewport. The demo window and response panel
+stay in normal flow so they cannot overlap as content grows.
 
-`dist/retro.css` keeps self-hosted Pixelify Sans for the wordmark and Kibu’s
-speech bubbles. Headings, body text and labels use system fonts for readability.
-`dist/launch.css` supplies section spacing, contrast and the open-source badge.
-The Pixelify font license is at `dist/assets/fonts/OFL.txt`.
+Headings and body text use self-hosted Manrope at
+`dist/assets/fonts/Manrope.ttf` (SIL Open Font License, in `Manrope-OFL.txt`).
+Pixelify Sans is kept for the wordmark and Kibu's speech bubbles only;
+its licence is `OFL.txt`.
+
+The agent section includes a short note about optional Jev decisions, the
+separate TypeSafe API key and billing, and the local fallback. Existing page
+copy was preserved when adding this note.
+
+Icons are line drawings in one inline SVG sprite at the top of `index.html`
+(`<symbol id="i-…">`), shown in soft lime tiles. Add a symbol there and
+reference it with `<use href="#i-name">`.
+
+Copy rules: plain, specific sentences; say what Kibu does and what it needs;
+no em dashes.
 
 ## GitHub stars
 
-`dist/github.js` reads the public repository’s star count from GitHub’s API.
-It displays the exact count, including zero, and falls back to a working
-“Star on GitHub” link if the request fails, times out or is rate-limited.
-No token, tracking service or hard-coded count is used.
+`dist/github.js` reads the public repository's star count from GitHub's API
+and shows it in the header once there is at least one star. Until then, or if
+the request fails, times out or is rate-limited, the button stays a plain
+"Star on GitHub" link. No token, tracking service or hard-coded count is used.
 
-Verified at 320×568, 390×844, 600×800, 768×1024, 844×390, 1024×768,
-1440×1000 and 1920×1080. Browser checks cover horizontal overflow, all three
-demos, copying the install command, FAQ disclosure, the pet’s nap control,
-and GitHub success and failure states. Motion preferences remain respected.
+Checked at 15 viewport sizes from 320 × 568 through 2560 × 1440, including
+phone landscape and the 900px layout breakpoint: no horizontal overflow,
+no overlap between the demo window and response panel, and the font loads.
+All three demos run, the install command copies, questions open, and the
+playground controls work. Motion preferences are respected.

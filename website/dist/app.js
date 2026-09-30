@@ -10,9 +10,9 @@ const files = [
   ['PDF', 'project-proposal.pdf', 'Sunday', '']
 ];
 const tasks = {
-  organize: { request:'“Organize my Downloads.”', ready:'A place for everything. Ready?', progress:'Finding a home for every file…', done:'6 files. 3 folders. A little more breathing room.', title:'Downloads' },
-  find: { request:'“Find the invoice from September.”', ready:'I know it’s around here somewhere.', progress:'Looking through Downloads…', done:'Found it. Right where you didn’t look.', title:'Downloads' },
-  rename: { request:'“Give these screenshots tidy names.”', ready:'A little order goes a long way.', progress:'Tidying up those filenames…', done:'Same screenshots. Much better names.', title:'Screenshots' }
+  organize: { request:'“Organize my Downloads.”', ready:'Six loose files. Want them sorted?', progress:'Finding a home for every file…', done:'Six files, three folders. Much better.', title:'Downloads' },
+  find: { request:'“Find the invoice from September.”', ready:'It’s in here somewhere. Shall I look?', progress:'Looking through Downloads…', done:'Found it. One match, top of the list.', title:'Downloads' },
+  rename: { request:'“Give these screenshots tidy names.”', ready:'Four screenshots, four forgettable names.', progress:'Tidying up those filenames…', done:'Same screenshots. Names you can read.', title:'Screenshots' }
 };
 const screenshots = ['Screenshot 2026-09-22 at 10.42.03.png','Screenshot 2026-09-22 at 10.45.11.png','Screenshot 2026-09-22 at 11.02.38.png','Screenshot 2026-09-22 at 11.14.52.png'];
 let selected='organize', phase='ready', timer, helloTimer;
@@ -91,9 +91,10 @@ document.querySelectorAll('[data-copy]').forEach(button=>{
   let restore;
   button.addEventListener('click',async()=>{
     const source=$(button.dataset.copy);
-    try{await navigator.clipboard.writeText(source.textContent.trim());button.textContent='Copied';}
-    catch{getSelection().selectAllChildren(source);button.textContent='Selected';}
-    clearTimeout(restore);restore=setTimeout(()=>{button.textContent='Copy';},1800);
+    const label=button.querySelector('span')||button;
+    try{await navigator.clipboard.writeText(source.textContent.trim());label.textContent='Copied';}
+    catch{getSelection().selectAllChildren(source);label.textContent='Selected';}
+    clearTimeout(restore);restore=setTimeout(()=>{label.textContent='Copy';},1800);
   });
 });
 
@@ -104,7 +105,7 @@ const revealObserver=new IntersectionObserver(entries=>{
     revealObserver.unobserve(entry.target);
   }
 },{threshold:.12});
-document.querySelectorAll('.control-content,.section-note,.playground,.closing-band').forEach(el=>revealObserver.observe(el));
+document.querySelectorAll('[data-reveal]').forEach(el=>revealObserver.observe(el));
 const scene=$('#demo');
 let tiltFrame;
 scene.addEventListener('pointermove',event=>{

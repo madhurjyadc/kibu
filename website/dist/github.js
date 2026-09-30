@@ -1,4 +1,6 @@
-// Keep the repository link useful even when GitHub is offline or rate-limited.
+// Every star button keeps its own wording. Once the repository has stars, each
+// one shows the live count beside it. If GitHub is offline or rate-limited, the
+// buttons stay as plain links, with no invented number.
 const badges = document.querySelectorAll('[data-github-stars]');
 async function updateStars() {
   try {
@@ -8,17 +10,16 @@ async function updateStars() {
     });
     if (!response.ok) return;
     const { stargazers_count: count } = await response.json();
-    if (!Number.isSafeInteger(count) || count < 0) return;
+    // A count of zero says nothing useful, so the plain link stays until there is one.
+    if (!Number.isSafeInteger(count) || count < 1) return;
     const formatted = new Intl.NumberFormat('en').format(count);
     for (const badge of badges) {
-      badge.querySelector('[data-star-label]').textContent = 'GitHub stars';
       const value = badge.querySelector('[data-star-count]');
-      value.textContent = formatted;
-      value.hidden = false;
-      badge.setAttribute('aria-label', `${formatted} GitHub ${count === 1 ? 'star' : 'stars'}. Star Kibu on GitHub`);
+      if (value) { value.textContent = formatted; value.hidden = false; }
+      badge.setAttribute('aria-label', `Star Kibu on GitHub. ${formatted} ${count === 1 ? 'star' : 'stars'} so far`);
     }
   } catch {
-    // The static “Star on GitHub” link is the fallback, with no invented count.
+    // The plain links are the fallback.
   }
 }
 if (badges.length) updateStars();
