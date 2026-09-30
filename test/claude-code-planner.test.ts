@@ -34,7 +34,7 @@ test('parseProposal: a clean object', () => {
 })
 
 test('parseProposal: survives a markdown fence and surrounding prose', () => {
-  const reply = 'Sure — here is the next step:\n\n```json\n{"text":"ok","calls":[{"name":"finish","input":{}}]}\n```\n\nLet me know.'
+  const reply = 'Sure \u2014 here is the next step:\n\n```json\n{"text":"ok","calls":[{"name":"finish","input":{}}]}\n```\n\nLet me know.'
   const p = parseProposal(reply)
   assert.equal(p?.calls[0]?.name, 'finish')
 })
@@ -81,7 +81,7 @@ test('the first turn sends the request, the authorization and the tool list', as
 
   assert.equal(proposal.calls[0]?.name, 'files_list')
   assert.equal(proposal.stopReason, 'tool_use')
-  // Nothing is billed on a subscription, so no cost is reported — otherwise
+  // Nothing is billed on a subscription, so no cost is reported; otherwise
   // the task's spending limit would fire over money nobody spent.
   assert.equal(proposal.usd, 0)
   assert.equal(proposal.inputTokens, 15)

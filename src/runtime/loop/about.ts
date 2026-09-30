@@ -7,8 +7,8 @@ import { quickModel } from '../model/claude-code-planner.js'
  * Answering "what are you?" without a model call.
  *
  * This used to go to the planner: several seconds and a round trip to have
- * Kibu describe itself. The answer is a fact about this build — which tools
- * are compiled in, which permissions this Mac has granted — so it is composed
+ * Kibu describe itself. The answer is a fact about this build (which tools
+ * are compiled in, which permissions this Mac has granted), so it is composed
  * from those facts directly. That also makes it impossible for the answer to
  * drift from what Kibu can really do, which a model-written answer cannot
  * promise.
@@ -56,14 +56,14 @@ export function describeModels(route: 'api' | CodingApp | null, model: ModelConf
       : route === 'codex' || route === 'opencode'
         ? `I think through the ${route === 'codex' ? 'Codex' : 'OpenCode'} on this Mac, with ${(route === 'codex' ? model.codex : model.opencode) || 'the model it is set up to use'}.`
       : route === 'api'
-        ? `I think with ${modelName(model.planner)}, through the Anthropic API — thinking briefly for quick answers, and harder for anything I do on your Mac.`
+        ? `I think with ${modelName(model.planner)}, through the Anthropic API, thinking briefly for quick answers, and harder for anything I do on your Mac.`
         : 'No thinking model is connected yet. Add an Anthropic key under /keys, or let me use Claude Code under /tune.'
   const evidence: Evidence[] = [
     {
       kind: 'text',
       label: 'Reading your request',
       value: jev
-        ? 'Jev, a small fast model from TypeSafe AI, sorts each request in about half a second — what kind of job it is, and which tools it needs.'
+        ? 'Jev, a small fast model from TypeSafe AI, sorts each request in about half a second: what kind of job it is, and which tools it needs.'
         : 'Local rules sort each request; Jev is switched off.'
     },
     { kind: 'text', label: 'No model at all', value: 'Timers, notes, reminders, sums and questions like this one run on local code, instantly.' }
@@ -133,7 +133,7 @@ export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: 
       label: 'Try me with',
       value: workflowsEnabled
         ? '"remind me to call mom tomorrow at 7", "when am I free tomorrow", "tidy up my Downloads", ' +
-          '"find the invoice I saved yesterday" — those run on local code and Jev in about a second, with no ' +
+          '"find the invoice I saved yesterday". Those run on local code and Jev in about a second, with no ' +
           'planning model at all.'
         : '"remind me to call mom tomorrow at 7", "when am I free tomorrow", "tidy up my Downloads", ' +
           '"find the invoice I saved yesterday".'
@@ -153,7 +153,7 @@ export function describeSelf(os: OsAdapter, canPlan: boolean, workflowsEnabled: 
 
   return {
     headline: canSeeApps
-      ? "I'm Kibu. I work on your Mac: your files, your apps, and the web — and I show you what I actually did."
+      ? "I'm Kibu. I work on your Mac: your files, your apps, and the web, and I show you what I actually did."
       : "I'm Kibu. I work on your files and the web today, and on your apps as soon as you let me see them.",
     evidence
   }

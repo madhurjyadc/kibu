@@ -10,6 +10,9 @@ made.
 This is an early prototype. It is macOS-only today, and the sections below say
 plainly what has been tested and what has not.
 
+The short version, with a demo you can try in the browser, is at
+<https://getkibu.vercel.app>.
+
 ---
 
 ## Installing it
@@ -38,7 +41,7 @@ who don't want to build are described in [`docs/RELEASING.md`](docs/RELEASING.md
   and capability help work without a model key. API keys can be added under Settings and encrypted with
   the macOS Keychain. No shared key is bundled.
   - **A TypeSafe key** (`TYPESAFE_API_KEY`) for Jev. On its own this covers
-    organising a folder, finding a file and renaming files — no planning model
+    organising a folder, finding a file and renaming files, with no planning model
     involved, ~100ms decisions, $0.042/MTok input with output free.
   - **An Anthropic key** (`ANTHROPIC_API_KEY`) for the planning model
     (Claude Sonnet 5.5), needed for anything open-ended.
@@ -47,29 +50,29 @@ who don't want to build are described in [`docs/RELEASING.md`](docs/RELEASING.md
   the planning model* below for exactly which requests need which.
 
   **Already use Claude Code?** Then there is nothing to set up: the tour
-  offers to think with the Claude Code on your Mac, using your own login —
+  offers to think with the Claude Code on your Mac, using your own login;
   see *Planning through Claude Code* below. Codex and OpenCode work the same way.
 
 ## First run
 
 Kibu opens on a one-minute tour: one card per thing it can do, each with a
-line of explanation, something you could type, and — on the same card — the
+line of explanation, something you could type, and, on the same card, the
 macOS permissions that thing needs. Nothing is asked for until you tap
 "Allow"; every card can be skipped. `/setup` shows it again, and Settings →
 Permissions lists everything in one place.
 
-1. **Hello** — and the shortcut, ⌥ Option + Space (not ⌘ Command + Space,
+1. **Hello**, and the shortcut, ⌥ Option + Space (not ⌘ Command + Space,
    which is Spotlight's). Click it and press a new chord to change it; if
    another app already holds it, Kibu picks the next free one and shows that.
-2. **How Kibu thinks** — pick one: each coding app found on this Mac (Claude
-   Code, Codex, OpenCode — using their own login), or an Anthropic API key.
+2. **How Kibu thinks**: pick one of the coding apps found on this Mac (Claude
+   Code, Codex, OpenCode, each using its own login), or an Anthropic API key.
    The same card asks for the optional TypeSafe key for Jev.
-3. **Files** — Desktop, Documents and Downloads.
-4. **Your day** — Calendar, Reminders, Notes and Mail.
-5. **The web** — each installed browser, with its "Allow JavaScript from Apple Events" step spelled out.
-6. **Other apps** — Accessibility, Screen Recording, Finder and System Events.
-7. **Remember & remind** — notifications.
-8. **That's it** — what it thinks with, whether Jev is on, how many
+3. **Files**: Desktop, Documents and Downloads.
+4. **Your day**: Calendar, Reminders, Notes and Mail.
+5. **The web**: each installed browser, with its "Allow JavaScript from Apple Events" step spelled out.
+6. **Other apps**: Accessibility, Screen Recording, Finder and System Events.
+7. **Remember & remind**: notifications.
+8. **That's it**: what it thinks with, whether Jev is on, how many
    permissions are allowed, and a few requests to try.
 
 Reading a permission never prompts. A denied one links to the right page of
@@ -173,15 +176,15 @@ The model proposes actions. Local code decides whether they happen:
 
 ### Ways to act, in order of preference
 
-1. **Direct operations** — file moves happen through the filesystem, not by
+1. **Direct operations**: file moves happen through the filesystem, not by
    driving Finder.
-2. **App scripting** — Calendar, Reminders, Notes, Mail, browser tabs, the
+2. **App scripting**: Calendar, Reminders, Notes, Mail, browser tabs, the
    Shortcuts app and a few system settings are driven through their own
    scripting interfaces (`src/os/macos/scripting.ts`), which take well under a
    second and either work or say why. Each change is read back to verify it,
    and new events, reminders, notes and setting changes can be undone. Mail is
    only ever a draft; nothing Kibu does reaches another person on its own.
-3. **Semantic control** — macOS accessibility actions and browser DOM
+3. **Semantic control**: macOS accessibility actions and browser DOM
    references, which are far more reliable than pixels.
 **Never: your mouse or keyboard.** Kibu does not move the pointer or type
 keystrokes, ever. The tools that could (`syntheticInputTools` in
@@ -220,7 +223,7 @@ text, so it cannot invent a folder name or a destination path. If a step needs
 a value invented, it is not a workflow and the request goes to the planner.
 
 Workflows run their actions through the same `executeTool` path the planner
-uses, so they inherit every scope check, verifier and undo record — a workflow
+uses, so they inherit every scope check, verifier and undo record: a workflow
 cannot skip a permission prompt or claim an unverified success.
 
 With only a TypeSafe key configured, Kibu still does all three of the above.
@@ -237,8 +240,8 @@ what its first step would otherwise spend a round trip on:
   the Notes and "what's on screen" tools for "save this page as a note",
   instead of all fifty. A shorter prompt is a faster step.
 - **Which parts of "this"** to fetch in advance: your selected text, the tab
-  open in your browser, Finder's selection, or — only when you mention
-  copying or pasting — the clipboard. They are fetched in parallel and handed
+  open in your browser, Finder's selection, or, only when you mention
+  copying or pasting, the clipboard. They are fetched in parallel and handed
   to the planner as data.
 - **Whether the quick model will do.** Small jobs plan on Haiku with thinking
   off.
@@ -265,7 +268,7 @@ restarts on the same conversation only when the model tier changes. It runs with
 loaded or allowed** (`--tools "" --allowed-tools ""`), no user settings, hooks,
 skills or MCP servers (`--setting-sources "" --disable-slash-commands
 --strict-mcp-config`), from a neutral working directory, so that process can
-only answer — it cannot read a file, run a command, or pick up the `CLAUDE.md`
+only answer: it cannot read a file, run a command, or pick up the `CLAUDE.md`
 of whatever project you happen to be sitting in. Kibu's system prompt
 *replaces* Claude Code's coding-agent prompt (`--system-prompt`), which takes a
 trivial step from about 4s to about 1.5s. It is handed Kibu's system prompt, Kibu's tool schemas, and the
@@ -280,7 +283,7 @@ stopped by the same code that stops the API planner.
 
 Two honest caveats:
 
-- **This is for running Kibu on your own machine with your own login** —
+- **This is for running Kibu on your own machine with your own login**,
   which is how Kibu is installed today: everyone builds and runs their own
   copy. Anthropic does not permit third-party products to offer claude.ai
   login or subscription rate limits to *their* users without prior approval
@@ -288,7 +291,7 @@ Two honest caveats:
   so a signed build distributed to other people (`docs/RELEASING.md`) should
   lead with an API key instead.
 - **Nothing is billed, so the per-task spending limit does not apply on this
-  path** — it reports no cost rather than a number nobody is charged. The step
+  path**: it reports no cost rather than a number nobody is charged. The step
   limit and the wall-clock limit are what bound a task here, and planning
   steps consume your Claude Code usage allowance.
 
@@ -301,7 +304,7 @@ then arbitrary code execution. Instead:
 
 - **There is no shell.** Commands run through `execFile` with an argv array,
   so pipes, redirects, `;`, backticks and `$(...)` are inert text.
-- **Only allowlisted programs run** — `mkdir`, `cp`, `mv`, `ls`, `cat`, `git`,
+- **Only allowlisted programs run**: `mkdir`, `cp`, `mv`, `ls`, `cat`, `git`,
   `open` and a few more. `rm`, `sudo`, `curl` and their relatives are absent
   by design rather than filtered afterwards. Git is limited to a list of
   everyday subcommands, and every way of making it run another program
@@ -312,8 +315,8 @@ then arbitrary code execution. Instead:
 - **`open` will not launch anything.** Apps, scripts, installers and files
   marked executable are refused, and so are URL schemes other than web pages.
 - **Every path argument, and the folder a command runs in, must resolve
-  inside your home folder** and never into a protected location — including
-  via `../..` — and inside what the task has been allowed to read or write.
+  inside your home folder** and never into a protected location (including
+  via `../..`), and inside what the task has been allowed to read or write.
 
 `vetCommand` and `commandScopes` are that boundary, and they are tested directly.
 
@@ -326,14 +329,14 @@ from the planning model, with its own key and its own pricing** ($0.042 per
 million input tokens; output is unmetered).
 
 Jev is not a text model. You give it state plus a set of declared typed
-questions — `choice`, `noul` (yes/no with a probability), `score` — and it
+questions, namely `choice`, `noul` (yes/no with a probability) and `score`, and it
 answers all of them in one round trip. That shape determines how Kibu uses it
 (`src/runtime/model/jev.ts`):
 
 - **Routing** a request to a toolset: one `choice` plus one `noul`, in a single
   call, and only when the local keyword rules are unsure.
 - **Assigning files to groups that already exist.** Jev picks between labels we
-  declared, so it cannot invent a folder name — the planning model proposes the
+  declared, so it cannot invent a folder name; the planning model proposes the
   groups, Jev does the bulk assignment in one batched call, and the result is
   still shown to you as a preview before anything moves.
 - **Choosing whether to reobserve, replan or ask**, but only in the ambiguous
@@ -350,8 +353,8 @@ Three constraints, enforced in code rather than hoped for:
   made at all.
 
 Every decision is recorded with its latency, input tokens, cost, and whether
-Jev was consulted or local rules answered — including how often Jev changed the
-local verdict — so its value can be measured rather than assumed.
+Jev was consulted or local rules answered, including how often Jev changed the
+local verdict, so its value can be measured rather than assumed.
 
 ---
 
@@ -366,7 +369,7 @@ every request.
   means the next "standup friday 9am" goes there too, and the result says
   "like last time" with a *From memory* line. A shortcut Kibu had to work out
   from your words is remembered under those words. Defaults Kibu guessed are
-  never learned — only choices you made.
+  never learned, only choices you made.
 - **Relevant only.** Before a task, local code shortlists memories sharing a
   word or topic with the request; Jev then answers one yes/no per memory
   ("would knowing this help?"), in a single call. Without Jev, a memory must
@@ -402,7 +405,7 @@ Kibu **uses cloud models, so it is not an offline app.**
 
 Kibu records an undo entry for the operations it can genuinely reverse: file
 moves, renames, and folder creation. Undo runs newest-first and refuses when
-the world has moved on — if the file is no longer where Kibu put it, if
+the world has moved on: if the file is no longer where Kibu put it, if
 something now occupies the original path, or if a created folder now contains
 files, it skips that entry and tells you why.
 
@@ -413,8 +416,8 @@ and anything done through synthetic input are not reversible.
 
 ## Documentation
 
-- [`docs/TESTED.md`](docs/TESTED.md) — what is actually verified, and what is not
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — boundaries and how to extend them
+- [`docs/TESTED.md`](docs/TESTED.md): what is actually verified, and what is not
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): boundaries and how to extend them
 
 ## Tests
 

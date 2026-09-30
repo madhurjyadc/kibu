@@ -20,7 +20,7 @@ export interface WorkflowMatch {
  *
  * Local plausibility checks narrow the field first, so a request that clearly
  * matches exactly one workflow costs nothing to route. Jev is asked only when
- * more than one is plausible, and it chooses between the shortlist — including
+ * more than one is plausible, and it chooses between the shortlist, including
  * an explicit "none of these" option, so it can decline.
  */
 export async function routeToWorkflow(
@@ -31,8 +31,8 @@ export async function routeToWorkflow(
   route: string
 ): Promise<WorkflowMatch | null> {
   // Keyword matching alone may not claim a request. Each workflow declares
-  // the routes it belongs to, and the route — local rules, or Jev when they
-  // are unsure — decides what kind of work this is. That gate is why "open
+  // the routes it belongs to, and the route (local rules, or Jev when they
+  // are unsure) decides what kind of work this is. That gate is why "open
   // youtube and search for a good video" no longer searches the Downloads
   // folder for a video file.
   const effective = route === 'unclear' && droppedPaths.length > 0 ? 'files' : route

@@ -3,7 +3,7 @@
  *
  * "54/30" is not a task and must never reach a planner: it is arithmetic, and
  * arithmetic is the one thing a launcher can answer perfectly, instantly, for
- * free. Deliberately not `eval` — only digits, the four operators, parentheses
+ * free. Deliberately not `eval`: only digits, the four operators, parentheses
  * and a percent form are accepted, and anything else returns null rather than
  * being executed. A launcher that runs arbitrary typed text as code is a
  * liability.

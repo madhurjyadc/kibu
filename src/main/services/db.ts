@@ -213,7 +213,7 @@ export class Store {
     }))
   }
 
-  /** Reversible actions for a task, newest first — undo runs in reverse order. */
+  /** Reversible actions for a task, newest first: undo runs in reverse order. */
   undoableActions(taskId: string): { id: string; undo: UndoEntry }[] {
     const rows = this.db
       .prepare(

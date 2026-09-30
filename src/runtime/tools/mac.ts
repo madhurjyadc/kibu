@@ -12,7 +12,7 @@ import { externalWebUrl } from '../../shared/web-url.js'
  *
  * These sit above the desktop tools in the order of preference. They are
  * fast, they either work or say why, and their effects can be checked by
- * reading the app back — so each one that changes something has a verifier,
+ * reading the app back, so each one that changes something has a verifier,
  * and each one that creates something records an undo.
  *
  * Nothing here sends anything to another person. Mail only ever opens a
@@ -268,7 +268,7 @@ export const mailDraft: ToolDefinition = {
     await macBridge().jxa(SCRIPTS.mailDraft, i)
     return {
       result: { drafted: true, to: i.to },
-      evidence: [{ kind: 'text', label: 'Draft open in Mail — nothing was sent', value: i.subject || '(no subject)' }]
+      evidence: [{ kind: 'text', label: 'Draft open in Mail. Nothing was sent', value: i.subject || '(no subject)' }]
     }
   }
 }
@@ -298,7 +298,7 @@ export async function readOpenPage(prefer: string | null): Promise<OpenPage | nu
 
 /**
  * Gathers "this": the app the person was in, what they had selected, the
- * front browser tab, Finder's selection, and — only when asked for — the
+ * front browser tab, Finder's selection, and, only when asked for, the
  * clipboard. Each part is optional because each costs time and some are
  * private; the caller asks only for what the request points at.
  */
@@ -319,8 +319,8 @@ export async function gatherContext(
           out.tab = page ? { browser: page.browser, title: page.title, url: page.url } : null
           out.page = page ? { selection: page.selection, text: page.text } : null
         },
-        // The page could not be read — usually the browser's one-time
-        // setting — so fall back to its title and address, and say why.
+        // The page could not be read (usually the browser's one-time
+        // setting), so fall back to its title and address, and say why.
         async (err: unknown) => {
           out.pageNote = err instanceof Error ? err.message : String(err)
           const tabs = await soft(b.jxa<{ browser: string; title: string; url: string }[]>(SCRIPTS.browserTabs, { activeOnly: true }, 8000), [])

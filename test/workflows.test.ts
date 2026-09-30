@@ -47,7 +47,7 @@ const choiceAnswer = (value: string, confidence = 0.9) => ({
 
 interface Harness {
   runner: TaskRunner
-  /** True if the planning model was ever asked to propose — i.e. an API call. */
+  /** True if the planning model was ever asked to propose, i.e. an API call. */
   plannerUsed: () => boolean
   questionsAsked: string[]
 }

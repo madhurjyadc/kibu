@@ -25,13 +25,13 @@ interface Card {
 }
 
 const CARDS: Card[] = [
-  { id: 'hello', say: 'Hi, I’m Kibu.', mood: 'wave', icon: 'spark', line: 'I do real work on your Mac when you ask — and only then. Here’s what I can do, one thing at a time.' },
+  { id: 'hello', say: 'Hi, I’m Kibu.', mood: 'wave', icon: 'spark', line: 'I do real work on your Mac when you ask, and only then. Here’s what I can do, one thing at a time.' },
   { id: 'think', say: 'How should I think?', mood: 'curious', icon: 'spark', line: 'Pick what I plan with. You can change it any time in Settings.' },
   { id: 'files', say: 'Files.', mood: 'happy', icon: 'folder', line: 'Find anything, tidy a messy folder, rename a batch to one pattern. You see a preview first, and every move can be undone.', example: 'Organize my Downloads folder', asks: ['folder:Downloads', 'folder:Desktop', 'folder:Documents'] },
   { id: 'day', say: 'Your day.', mood: 'listening', icon: 'clock', line: 'Calendar, reminders and notes, through the apps you already use. Mail only ever becomes a draft for you to send.', example: 'Remind me to call mom tomorrow at 7', asks: ['app:com.apple.iCal', 'app:com.apple.reminders', 'app:com.apple.Notes', 'app:com.apple.mail'] },
   { id: 'web', say: 'The web.', mood: 'reading', icon: 'search', line: 'Read the page you’re on, open tabs, and work on sites in your own browser while you watch. I ask before anything that sends, posts or buys.', example: 'Summarize this page', asks: ['app:com.google.Chrome', 'app:com.apple.Safari', 'app:company.thebrowser.Browser', 'app:com.brave.Browser', 'app:com.microsoft.edgemac'] },
   { id: 'apps', say: 'Other apps.', mood: 'determined', icon: 'screen', line: 'Read windows and press buttons in other apps, and use whatever you’ve selected. I never move your mouse or type for you.', example: 'Explain the error I just selected', asks: ['accessibility', 'screen-recording', 'app:com.apple.finder', 'app:com.apple.systemevents'] },
-  { id: 'keep', say: 'Remember & remind.', mood: 'love', icon: 'list', line: 'Notes, tasks and a focus timer live with me. Tell me things once and I’ll remember them — only on this Mac.', example: 'Start a 25 minute focus timer', asks: ['notifications'] },
+  { id: 'keep', say: 'Remember & remind.', mood: 'love', icon: 'list', line: 'Notes, tasks and a focus timer live with me. Tell me things once and I’ll remember them, only on this Mac.', example: 'Start a 25 minute focus timer', asks: ['notifications'] },
   { id: 'done', say: 'That’s it.', mood: 'celebrate', icon: 'check', line: '' }
 ]
 
@@ -136,14 +136,14 @@ export function Welcome({ onDone }: { onDone(compose?: string): void }): React.J
             <ShortcutKey value={settings.shortcut} onChange={(shortcut) => void update({ shortcut })} />
             <span className="welcome-or">or click my face in the menu bar</span>
           </div>}
-          {card.id === 'hello' && <p className="welcome-note">That’s me on your desktop, too — drag me anywhere, drop files on me, right-click me to play. If I’m ever in the way, Settings → The pet can tuck me into the corner or the menu bar.</p>}
+          {card.id === 'hello' && <p className="welcome-note">That’s me on your desktop, too. Drag me anywhere, drop files on me, right-click me to play. If I’m ever in the way, Settings → The pet can tuck me into the corner or the menu bar.</p>}
 
           {card.id === 'think' && settings && <>
             <ul className="welcome-choices" role="radiogroup" aria-label="What Kibu thinks with">
               {apps.filter((a) => a.available).map((a) => {
                 const on = settings.useClaudeCode && settings.codingApp === a.id
                 return <li key={a.id}><button role="radio" aria-checked={on} className={`welcome-choice ${on ? 'is-on' : ''}`} onClick={() => { setUseKey(false); void update({ useClaudeCode: true, codingApp: a.id }) }}>
-                  <span className="welcome-radio" /><span><strong>{a.label}</strong><em>Found on this Mac. Uses the login it already has — nothing to paste or pay.</em></span>
+                  <span className="welcome-radio" /><span><strong>{a.label}</strong><em>Found on this Mac. Uses the login it already has. Nothing to paste or pay.</em></span>
                 </button></li>
               })}
               <li><button role="radio" aria-checked={!settings.useClaudeCode && (hasKey || useKey)} className={`welcome-choice ${!settings.useClaudeCode && (hasKey || useKey) ? 'is-on' : ''}`} onClick={() => { setUseKey(true); void update({ useClaudeCode: false }) }}>
@@ -160,7 +160,7 @@ export function Welcome({ onDone }: { onDone(compose?: string): void }): React.J
 
             <div className="welcome-jev">
               <h2>Jev · optional</h2>
-              <p className="welcome-note">A TypeSafe key lets Jev make the quick calls — which folder, which calendar, which way to rename — in about a tenth of a second, for a fraction of a cent. Without it I use my own rules.</p>
+              <p className="welcome-note">A TypeSafe key lets Jev make the quick calls (which folder, which calendar, which way to rename) in about a tenth of a second, for a fraction of a cent. Without it I use my own rules.</p>
               <div className="key">
                 <label htmlFor="welcome-jev">TypeSafe</label>
                 <input id="welcome-jev" type="password" placeholder={hasJev ? 'Saved in Keychain' : 'TypeSafe API key'} value={jev} onChange={(e) => setJev(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && jev.trim() && void saveJev()} />
@@ -182,8 +182,8 @@ export function Welcome({ onDone }: { onDone(compose?: string): void }): React.J
 
           {card.id === 'done' && <>
             <ul className="welcome-summary">
-              <li><span>Thinks with</span><strong>{thinking ?? 'Nothing yet — files, reminders, calendar and notes only'}</strong></li>
-              <li><span>Jev</span><strong>{hasJev ? 'On' : 'Off — using my own rules'}</strong></li>
+              <li><span>Thinks with</span><strong>{thinking ?? 'Nothing yet. Files, reminders, calendar and notes only'}</strong></li>
+              <li><span>Jev</span><strong>{hasJev ? 'On' : 'Off, using my own rules'}</strong></li>
               <li><span>Allowed</span><strong>{setup.items.filter((i) => i.status === 'granted').length} of {setup.items.length} permissions</strong></li>
             </ul>
             <p className="welcome-lead">Press <Keys accelerator={settings?.shortcut ?? 'Alt+Space'} /> and ask. A few to start with:</p>

@@ -5,8 +5,8 @@ import { SYSTEM_PROMPT, type PlannerLike, type PlannerProposal, type ToolResultI
 import type { TaskState } from '../../shared/types.js'
 
 /**
- * Planning through a coding app already installed on this Mac — Claude Code,
- * Codex or OpenCode — using the login that is already there.
+ * Planning through a coding app already installed on this Mac (Claude Code,
+ * Codex or OpenCode), using the login that is already there.
  *
  * Every one of them is an agent with tools of its own. Here it is only asked
  * to answer: it proposes Kibu's tool calls as JSON, and Kibu's own loop still
@@ -24,7 +24,7 @@ export interface CliReply {
   outputTokens: number
 }
 
-const REPLY_CONTRACT = `Reply with ONE JSON object and nothing else — no prose around it, no markdown fence:
+const REPLY_CONTRACT = `Reply with ONE JSON object and nothing else. No prose around it, no markdown fence:
 
 {"text": "<see below>",
  "calls": [{"name": "<tool name>", "input": { ... }}]}
@@ -177,8 +177,8 @@ interface RawProposal {
 
 /**
  * Pulls the proposal out of whatever the model actually said. Exported so the
- * awkward cases — a fenced block, a sentence in front, a single call instead
- * of an array — are covered by tests rather than by hope.
+ * awkward cases (a fenced block, a sentence in front, a single call instead
+ * of an array) are covered by tests rather than by hope.
  */
 export function parseProposal(reply: string): { text: string; calls: PlannerProposal['calls'] } | null {
   const body = extractObject(reply)

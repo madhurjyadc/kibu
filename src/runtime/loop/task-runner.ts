@@ -161,7 +161,7 @@ export class TaskRunner {
     private readonly hooks: RunnerHooks
   ) {
     // The planner is built on first use, so a task handled entirely by a
-    // workflow never constructs it — and never needs an Anthropic key.
+    // workflow never constructs it, and never needs an Anthropic key.
     this.jev = new Jev(deps.jevApiKey, deps.jevEnabled, deps.model.jev, deps.jevFetch)
     this.memories = this.memoryOn ? [...(deps.memories ?? [])] : []
   }
@@ -341,9 +341,9 @@ export class TaskRunner {
    * Shuts the browser when the job it was opened for is over.
    *
    * Leaving a Chromium window sitting on the desktop after every web task is
-   * litter. Local rules decide the clear cases — the user asking to *open*
+   * litter. Local rules decide the clear cases: the user asking to *open*
    * something wants it left open; a task that failed leaves it up so they can
-   * see where it got to — and Jev is asked only in the ambiguous middle,
+   * see where it got to. Jev is asked only in the ambiguous middle,
    * choosing between two outcomes this code has already defined.
    */
   private async tidyBrowser(): Promise<void> {
@@ -410,7 +410,7 @@ export class TaskRunner {
     if (route.needsClarification && !following && !(this.deps.brain && isBrainRequest(this.task.request))) {
       const answer = await this.ask({
         reason: 'ambiguous',
-        prompt: `I want to get this right — what would you like me to do?\n\nYou asked: "${this.task.request}"`,
+        prompt: `I want to get this right. What would you like me to do?\n\nYou asked: "${this.task.request}"`,
         allowFreeText: true
       })
       if (answer.text) {
@@ -469,13 +469,13 @@ export class TaskRunner {
       const snapshot = await this.deps.os.inspectWindow(front.pid, { maxNodes: 300 })
       this.context().observe({
         kind: 'window',
-        summary: `The window you were in: ${snapshot.app.name} — "${snapshot.title}"`,
+        summary: `The window you were in: ${snapshot.app.name}, "${snapshot.title}"`,
         data: { app: snapshot.app.name, pid: front.pid, title: snapshot.title },
         staleAfterMs: 30_000
       })
       this.planner.addNote(
         `The user was working in ${front.name} ("${snapshot.title}", pid ${front.pid}) when they asked. ` +
-          `Call desktop_inspect_window with that pid to see its current contents before acting — ` +
+          `Call desktop_inspect_window with that pid to see its current contents before acting: ` +
           `this snapshot is already out of date.`
       )
     } catch (err) {
@@ -503,7 +503,7 @@ export class TaskRunner {
     const match = await routeToWorkflow(this.task.request, this.deps.droppedPaths, wfCtx, route)
     if (!match) return false
 
-    this.log('info', 'workflow', `running "${match.workflow.id}" — ${match.reason}`)
+    this.log('info', 'workflow', `running "${match.workflow.id}": ${match.reason}`)
     this.setStatus('executing', 'Getting started')
     this.hooks.onPetState('working')
 
@@ -627,8 +627,8 @@ export class TaskRunner {
   private async prepareForPlanning(): Promise<PlanSetup> {
     const route = (this.task as TaskState & { route?: string }).route ?? 'unclear'
     const setup = await this.jev.planSetup(this.task.request, route, this.deps.droppedPaths.length > 0)
-    // The quick model only ever answers. Anything that acts on the Mac — a
-    // tool family, something on screen to read, the web — gets the full model
+    // The quick model only ever answers. Anything that acts on the Mac (a
+    // tool family, something on screen to read, the web) gets the full model
     // from the first step, however small the job looks: a fast wrong move
     // costs more than a slower right one.
     this.answerOnly = setup.quick && setup.families.length === 0 && setup.start === 'none' && !Object.values(setup.context).some(Boolean)
@@ -721,7 +721,7 @@ export class TaskRunner {
       // Step 2: decide whether to keep going, re-look, or change approach.
       const verdict = await this.jev.assessProgress(this.task)
       if (verdict.action !== 'continue') {
-        this.log('info', 'jev', `progress check: ${verdict.action} — ${verdict.reason}`)
+        this.log('info', 'jev', `progress check: ${verdict.action}: ${verdict.reason}`)
         widen(verdict.reason)
         if (verdict.action === 'abort') throw new Error(verdict.reason)
         if (verdict.action === 'ask') {
@@ -1016,9 +1016,9 @@ export class TaskRunner {
    * One question before a job that will need permission, instead of one per
    * step as it goes.
    *
-   * What the job will touch is predicted from how the request was read — a
+   * What the job will touch is predicted from how the request was read (a
    * named folder, whether it changes files, apps it names, browsing in the
-   * user's own browser — with no extra model call. "Allow all" grants all of
+   * user's own browser), with no extra model call. "Allow all" grants all of
    * it for this task. "Ask me each time" leaves the step-by-step questions in
    * place. Either way, anything the prediction missed is still asked about
    * when it comes up, so a wrong guess can only cost a question, never grant

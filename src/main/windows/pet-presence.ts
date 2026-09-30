@@ -1,11 +1,11 @@
 /**
  * Where the pet lives.
- *   peek    — out of sight until there is something to see: it slides up
+ *   peek:    out of sight until there is something to see: it slides up
  *             while Kibu works, needs an answer or runs a timer, stays a few
  *             seconds to show how things went, and comes when called by
  *             resting the pointer on the right edge near the bottom.
- *   menubar — never on the desktop; the menu bar face and notifications.
- *   desktop — always on the desktop, wherever it was put.
+ *   menubar: never on the desktop; the menu bar face and notifications.
+ *   desktop: always on the desktop, wherever it was put.
  */
 export type PetMode = 'peek' | 'menubar' | 'desktop'
 

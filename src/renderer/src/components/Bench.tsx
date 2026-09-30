@@ -7,7 +7,7 @@ import type { BenchRow } from '../../../shared/protocol.js'
  */
 export function Bench({ rows, running }: { rows: BenchRow[]; running: boolean }): React.JSX.Element {
   if (running && rows.length === 0) {
-    return <p className="pane-empty">Timing every route — the network calls take a few seconds…</p>
+    return <p className="pane-empty">Timing every route. The network calls take a few seconds…</p>
   }
   const groups = [...new Set(rows.map((r) => r.group))]
   const spent = rows.reduce((sum, r) => sum + (r.usd ?? 0), 0)

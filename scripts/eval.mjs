@@ -33,8 +33,8 @@ import { DEFAULT_MODEL_CONFIG } from '../dist-test/src/shared/protocol.js'
 import { homedir } from 'node:os'
 
 /**
- * `path` says which way a case should be handled — a no-model workflow, or
- * the planner — so a regression that sends an easy request the slow way
+ * `path` says which way a case should be handled (a no-model workflow, or
+ * the planner), so a regression that sends an easy request the slow way
  * shows up as a failure, not just a slower pass.
  */
 const CASES = [
@@ -127,7 +127,7 @@ async function runCase(c) {
   return { c, ms, path, plannerCalls, headline, problems, undone, jev, memory: logs.filter((l) => l.source === 'memory').map((l) => l.message), timing: logs.filter((l) => l.source === 'timing').map((l) => l.message), questions: logs.filter((l) => l.source === 'question').map((l) => l.message) }
 }
 
-console.log(`Kibu eval — ${cases.length} cases, planner: Claude Code (${DEFAULT_MODEL_CONFIG.claudeCode}), Jev: ${jevKey ? 'on' : 'off (local rules)'}\n`)
+console.log(`Kibu eval: ${cases.length} cases, planner: Claude Code (${DEFAULT_MODEL_CONFIG.claudeCode}), Jev: ${jevKey ? 'on' : 'off (local rules)'}\n`)
 const results = []
 for (const c of cases) {
   process.stdout.write(`… ${c.id}`)

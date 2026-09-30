@@ -34,9 +34,9 @@ test('big jobs celebrate, quick ones play it cool', () => {
 })
 
 test('emoji become list items or disappear', () => {
-  assert.equal(stripEmoji('📁 **Files** — find things'), '- **Files** — find things')
+  assert.equal(stripEmoji('📁 **Files** \u2014 find things'), '- **Files** \u2014 find things')
   assert.equal(stripEmoji('Done 🎉 nice'), 'Done nice')
-  const blocks = parseBlocks('Hey:\n\n📁 **Files** — find\n🌐 **Web** — browse')
+  const blocks = parseBlocks('Hey:\n\n📁 **Files** \u2014 find\n🌐 **Web** \u2014 browse')
   assert.equal(blocks[1]?.kind, 'ul')
   assert.equal(plainText('**Sorted** 3 files 🎉'), 'Sorted 3 files')
 })

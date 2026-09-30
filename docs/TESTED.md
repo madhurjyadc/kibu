@@ -40,7 +40,7 @@ the planner answering from it ("who is my manager?" → from memory, 3.1s), an
 unrelated request getting no memory at all, and forgetting it. Recall ran on
 the local rules; Jev's relevance judgement is covered only by a stubbed test.
 
-## Verified by automated tests (`npm test` — 270 tests, all passing)
+## Verified by automated tests (`npm test`: 270 tests, all passing)
 
 ### Authorization (`test/files.test.ts`)
 - A path inside a granted root is allowed; a path outside is reported as a
@@ -89,7 +89,7 @@ real filesystem:
 - A synthetic click outside every display is rejected by its precondition.
 - A stale element reference is reported as needing re-observation.
 
-### Planner-free workflows (`test/workflows.test.ts`) — real files, stubbed Jev
+### Planner-free workflows (`test/workflows.test.ts`): real files, stubbed Jev
 Driven through the real `TaskRunner` with **no Anthropic key**, and a planner
 stub whose `propose()` fails the test if it is ever called:
 - A folder of mixed files is genuinely sorted into `Documents/`, `Images/` and
@@ -112,15 +112,15 @@ stub whose `propose()` fails the test if it is ever called:
   generic words ("final", "copy") never become folder names, type grouping is a
   pure function of the extension, and all five naming schemes are exact.
 
-### Jev (`test/jev.test.ts`) — against a stubbed transport
-The SDK's `fetch` override is used, so these cover *our use of the API* — the
-request sent and how the answer is treated — without a network or a key:
+### Jev (`test/jev.test.ts`): against a stubbed transport
+The SDK's `fetch` override is used, so these cover *our use of the API* (the
+request sent and how the answer is treated) without a network or a key:
 - Routing sends one `choice` and one `noul` in a **single** request, to
   `/v1/systemone`, with the configured model id.
 - A `noul` probability above 0.5 is read as yes.
 - A confident local answer makes **no** network call at all.
 - **Jev can escalate a local `continue` to `ask`.**
-- **Jev cannot talk a deterministic `ask` back down to `continue`** — once a
+- **Jev cannot talk a deterministic `ask` back down to `continue`**: once a
   local rule fires, no call is even made.
 - A lower-caution suggestion on an untidy history is ignored.
 - A 500 from the API falls back to the local verdict in both routing and
@@ -205,7 +205,7 @@ Against a real Chromium via Playwright and a local HTTP server:
 
 ### The macOS helper (verified manually)
 The compiled Swift helper was run directly and confirmed to:
-- Report Accessibility and Screen Recording status truthfully — it returned
+- Report Accessibility and Screen Recording status truthfully: it returned
   `false` for both when not granted, rather than claiming success.
 - Enumerate running applications with pids.
 - Report the display as 1470×956 logical at `scaleFactor: 2`, in the
@@ -213,7 +213,7 @@ The compiled Swift helper was run directly and confirmed to:
 
 ---
 
-## NOT tested — be skeptical of these
+## NOT tested: be skeptical of these
 
 ### No live Jev call, and no live Anthropic API run
 **Update:** the Claude Code planner has now run live (see the top of this file). What follows still applies to Jev and to the Anthropic API planner.
@@ -237,8 +237,8 @@ What this means concretely:
 - No call has ever been made to the **real** TypeSafe API. The request shape is
   built against the SDK's own TypeScript definitions (`@typesafe-ai/sdk@0.6.0`)
   and exercised through a stubbed transport, but no live Jev response has been
-  seen. Confidence calibration in particular — where to put the `noul`
-  threshold, currently 0.5 — is a guess until measured.
+  seen. Confidence calibration in particular (where to put the `noul`
+  threshold, currently 0.5) is a guess until measured.
 
 The first thing to do with a working API key is run the three demo workflows
 end to end and check the prompt behaves.
@@ -262,7 +262,7 @@ stay empty until each one is actually exercised.
   not been tried.
 - **The exclusive desktop session is advisory at the runtime boundary.** The
   main process refuses a second claimant and logs it, but the runtime does not
-  receive that refusal — it only sends a claim. Today this is safe because the
+  receive that refusal; it only sends a claim. Today this is safe because the
   runtime refuses to start a second concurrent task at all, but the two
   mechanisms should be joined up before concurrent tasks are allowed.
 - **Pause does not interrupt an in-flight tool call.** It takes effect at the
@@ -280,8 +280,8 @@ stay empty until each one is actually exercised.
   dropping stale thinking after the history is trimmed), and a refusal is
   covered by a scripted test, but no real Sonnet 5.5 call has been made.
 - **Windows and Linux are unimplemented.** `UnimplementedAdapter` reports every
-  capability as unsupported, which is intentional — the runtime degrades to
-  file work rather than failing confusingly — but nothing there has run.
+  capability as unsupported, which is intentional (the runtime degrades to
+  file work rather than failing confusingly), but nothing there has run.
 - **Voice, proactive observation and "watch this task" mode are not built.**
   These were explicitly deferred.
 
@@ -291,4 +291,4 @@ stay empty until each one is actually exercised.
 
 When you make a capability work, add it here with what you actually did, not
 what you expect to work. If a workflow is tested against TextEdit, say
-"TextEdit" — not "native apps".
+"TextEdit", not "native apps".

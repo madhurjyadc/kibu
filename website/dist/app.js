@@ -86,6 +86,17 @@ reset();
 
 initPlayground();
 
+// Copy buttons put a command on the clipboard; where that is not allowed, the command is selected instead.
+document.querySelectorAll('[data-copy]').forEach(button=>{
+  let restore;
+  button.addEventListener('click',async()=>{
+    const source=$(button.dataset.copy);
+    try{await navigator.clipboard.writeText(source.textContent.trim());button.textContent='Copied';}
+    catch{getSelection().selectAllChildren(source);button.textContent='Selected';}
+    clearTimeout(restore);restore=setTimeout(()=>{button.textContent='Copy';},1800);
+  });
+});
+
 // Motion adds depth, while content remains visible when scripts or motion are off.
 const revealObserver=new IntersectionObserver(entries=>{
   for(const entry of entries)if(entry.isIntersecting){
@@ -93,7 +104,7 @@ const revealObserver=new IntersectionObserver(entries=>{
     revealObserver.unobserve(entry.target);
   }
 },{threshold:.12});
-document.querySelectorAll('.control-content,.section-note,.playground').forEach(el=>revealObserver.observe(el));
+document.querySelectorAll('.control-content,.section-note,.playground,.closing-band').forEach(el=>revealObserver.observe(el));
 const scene=$('#demo');
 let tiltFrame;
 scene.addEventListener('pointermove',event=>{

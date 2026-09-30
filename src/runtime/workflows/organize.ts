@@ -15,7 +15,7 @@ import type { Workflow, WorkflowContext, WorkflowResult } from './types.js'
 /**
  * "Organise this folder."
  *
- * Local code enumerates every candidate grouping — by file type, by a project
+ * Local code enumerates every candidate grouping: by file type, by a project
  * name that recurs across filenames, or by month. Jev picks which of those
  * fits, then assigns each file to one of the resulting folders. Nothing is
  * invented by a model: every folder name comes from the files themselves or
@@ -52,7 +52,7 @@ export const organizeWorkflow: Workflow = {
     if (files.length < 2) {
       return {
         success: true,
-        headline: `Nothing to do — ${target} has ${files.length} file${files.length === 1 ? '' : 's'} in it.`,
+        headline: `Nothing to do: ${target} has ${files.length} file${files.length === 1 ? '' : 's'} in it.`,
         evidence: [{ kind: 'path', label: 'Folder', value: target }]
       }
     }
@@ -138,7 +138,7 @@ export const organizeWorkflow: Workflow = {
       ]
     })
     if (approval.optionId !== 'approve') {
-      return { success: false, headline: 'Cancelled — nothing was moved.', evidence: [], unresolved: 'user declined' }
+      return { success: false, headline: 'Cancelled. Nothing was moved.', evidence: [], unresolved: 'user declined' }
     }
 
     ctx.progress(`Moving ${moves.length} files`)

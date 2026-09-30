@@ -17,7 +17,7 @@ async function exists(p: string): Promise<boolean> {
  * Reverses the file operations from one task, newest first.
  *
  * This is deliberately conservative. We only reverse operations we recorded
- * both sides of, and we refuse when the world has moved on — if the file is no
+ * both sides of, and we refuse when the world has moved on: if the file is no
  * longer where we put it, or something now occupies its original path, we skip
  * it and say so. There is no universal undo, and pretending otherwise would be
  * worse than doing nothing.

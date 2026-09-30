@@ -11,7 +11,7 @@ import { evaluateArithmetic } from './loop/calculate.js'
  * The point is to stop guessing where the seconds go. Jev's own latency, the
  * macOS index, and pure local work differ by two orders of magnitude, and
  * which one a feature can afford is a measurement, not an opinion. It runs in
- * the runtime because that is where the key already is — no credential has to
+ * the runtime because that is where the key already is; no credential has to
  * be copied anywhere to find out how fast it is.
  */
 export async function runBench(jevApiKey: string | null, model: ModelConfig): Promise<BenchRow[]> {
@@ -91,7 +91,7 @@ export async function runBench(jevApiKey: string | null, model: ModelConfig): Pr
       'route a request (local rules may answer)',
       async () => {
         const r = await jev.routeRequest('find the ethernet frames pdf I downloaded last week', false)
-        return `chose "${r.route}" — ${r.reason}`
+        return `chose "${r.route}": ${r.reason}`
       },
       spentSince
     )

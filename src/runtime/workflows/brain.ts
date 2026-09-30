@@ -71,7 +71,7 @@ export async function runBrainWorkflow(request: string, dropped: string[], ctx: 
     const kind = /\b(notes|tasks|reminders|projects|trackers)\b/i.exec(text)?.[1]?.toLowerCase().replace(/s$/, '') as BrainDraft['kind'] | undefined
     const state = await run({ op: 'list', ...(kind ? { kind } : {}) })
     const items = state.items.filter(i => i.status === 'open')
-    return { success: true, headline: items.length ? items.slice(0, 30).map(i => `• ${i.title}${i.dueAt ? ` — ${new Date(i.dueAt).toLocaleString()}` : ''}`).join('\n') : 'Nothing here yet. You can add a note, task, reminder, project, or daily tracker.', evidence: [] }
+    return { success: true, headline: items.length ? items.slice(0, 30).map(i => `• ${i.title}${i.dueAt ? ` · ${new Date(i.dueAt).toLocaleString()}` : ''}`).join('\n') : 'Nothing here yet. You can add a note, task, reminder, project, or daily tracker.', evidence: [] }
   }
   let item: BrainDraft | null = null
   if (/^(remind me|remember to|set a reminder|add a reminder)/i.test(text)) {
@@ -138,6 +138,6 @@ export async function runBrainWorkflow(request: string, dropped: string[], ctx: 
   }
   if (!item.title.trim()) return { success: false, headline: 'Give this a title first.', evidence: [] }
   await run({ op: 'create', item })
-  const when = item.dueAt ? ` — ${new Date(item.dueAt).toLocaleString()}` : ''
+  const when = item.dueAt ? ` · ${new Date(item.dueAt).toLocaleString()}` : ''
   return { success: true, headline: `Saved in Kibu: ${item.title}${when}.`, evidence: [{ kind: 'text', label: 'Workspace', value: item.kind === 'reminder' ? 'I’ll remind you when it’s due, or when you return to Kibu.' : 'Kept locally in your workspace.' }] }
 }

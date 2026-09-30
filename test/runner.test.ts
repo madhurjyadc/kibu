@@ -378,7 +378,7 @@ describe('the task loop end to end', () => {
       [{ name: 'finish', input: { success: true, headline: 'Moved both', evidence: [] } }]
     ]
 
-    // Cancel the instant the first move is recorded — deterministic, no timers.
+    // Cancel the instant the first move is recorded: deterministic, no timers.
     const h = harness(task, script, undefined, (t, runner) => {
       if (t.actions.some((a) => a.tool === 'files_move' && a.outcome === 'success')) runner.cancel()
     })

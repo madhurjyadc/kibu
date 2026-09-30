@@ -136,7 +136,7 @@ function originOf(url: string): string {
 export const browserNavigate: ToolDefinition = {
   name: 'browser_navigate',
   description:
-    'Open a URL in Kibu\'s own browser. This browser has its own profile and its own logins — it is not the user\'s Safari or Chrome. If a page needs a sign-in, pause and ask the user to do it here.',
+    'Open a URL in Kibu\'s own browser. This browser has its own profile and its own logins. It is not the user\'s Safari or Chrome. If a page needs a sign-in, pause and ask the user to do it here.',
   capability: 'browser.use',
   input: z.object({
     url: z.string().url(),
@@ -146,7 +146,7 @@ export const browserNavigate: ToolDefinition = {
    * Reading a page asks for nothing.
    *
    * This used to request authorization for every new origin, which meant a
-   * permission prompt to *look at a website* — in a browser with its own
+   * permission prompt to *look at a website*, in a browser with its own
    * profile, its own cookies and none of the user's sessions. The prompt
    * bought no safety and made the common case unusable. What deserves a
    * prompt is anything that leaves a trace: uploading a file, or saving a
@@ -304,7 +304,7 @@ export const browserUpload: ToolDefinition = {
 export const browserWaitFor: ToolDefinition = {
   name: 'browser_wait_for',
   description:
-    'Wait for text to appear on the page, or for the user to finish something only they can do — signing in, or entering a two-factor code. Use mode "user" for those: it pauses and tells the user what to do.',
+    'Wait for text to appear on the page, or for the user to finish something only they can do, such as signing in or entering a two-factor code. Use mode "user" for those: it pauses and tells the user what to do.',
   capability: 'browser.use',
   input: z.object({
     mode: z.enum(['text', 'user']),
@@ -322,7 +322,7 @@ export const browserWaitFor: ToolDefinition = {
         prompt: `${instruction}\n\nKibu opened its own browser window. Do this there, then choose Continue.`,
         allowFreeText: true,
         options: [
-          { id: 'continue', label: 'I have done it — continue' },
+          { id: 'continue', label: 'I have done it, continue' },
           { id: 'abort', label: 'Stop the task' }
         ]
       })

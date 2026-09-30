@@ -18,7 +18,7 @@ import type {
  * The bridge.
  *
  * This is the entire surface the renderer can reach. It exposes named calls
- * only — no ipcRenderer, no Node, no filesystem. Every call lands on a main
+ * only: no ipcRenderer, no Node, no filesystem. Every call lands on a main
  * process handler that validates its arguments before anything happens.
  */
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {

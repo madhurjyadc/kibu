@@ -9,7 +9,7 @@ import type { Understanding } from '../model/understand.js'
  *
  * The rule that keeps this honest: a workflow may only ever ask Jev to choose
  * between alternatives that local code has already constructed. If a step
- * needs a value invented — a sentence, a novel path, an unfamiliar plan — it
+ * needs a value invented (a sentence, a novel path, an unfamiliar plan), it
  * does not belong in a workflow, and the task goes to the planner instead.
  */
 export interface WorkflowContext {
@@ -65,8 +65,8 @@ export interface Workflow {
    *
    * Keyword matching alone is not enough to claim a request: "open youtube
    * and search for a good video" matches the file-finder's keywords, and
-   * without this gate it searched the Downloads folder for a video. The route
-   * — decided by local rules, or by Jev when they are unsure — has the final
+   * without this gate it searched the Downloads folder for a video. The route,
+   * decided by local rules, or by Jev when they are unsure, has the final
    * say over what kind of work a request is.
    */
   routes: string[]

@@ -4,8 +4,8 @@ import { externalWebUrl } from '../../shared/web-url.js'
 import type { ToolContext, ToolDefinition } from './registry.js'
 
 /**
- * Using the person's own browser — the one where they are signed in, where
- * their home feed knows what they like — the way they would: a new tab, a
+ * Using the person's own browser (the one where they are signed in, where
+ * their home feed knows what they like) the way they would: a new tab, a
  * look at the page, a click on a link, a word in the search box.
  *
  * None of it moves the mouse or presses a key. Each action is one of the
@@ -164,7 +164,7 @@ async function ensureSite(ctx: ToolContext, url: string, browser: string): Promi
   const host = new URL(url).hostname.replace(/^www\./, '')
   const answer = await ctx.ask({
     reason: 'authorization',
-    prompt: `Let Kibu use ${host} in your ${browser} for this task? It clicks and reads through the page — never your mouse or keyboard.`,
+    prompt: `Let Kibu use ${host} in your ${browser} for this task? It clicks and reads through the page, never your mouse or keyboard.`,
     allowFreeText: false,
     options: [{ id: 'allow', label: `Allow ${host}` }, { id: 'deny', label: 'Not this site' }]
   })
@@ -242,7 +242,7 @@ export const yourBrowserLook: ToolDefinition = {
 export const yourBrowserClick: ToolDefinition = {
   name: 'your_browser_click',
   description:
-    "Click a link or button on the page in the user's browser, by its reference from your_browser_look — through the page, never the mouse. " +
+    "Click a link or button on the page in the user's browser, by its reference from your_browser_look. It goes through the page, never the mouse. " +
     'Anything that sends, posts, buys, subscribes or deletes is confirmed with the user first.',
   capability: 'yourbrowser.act',
   exclusiveDesktop: true,

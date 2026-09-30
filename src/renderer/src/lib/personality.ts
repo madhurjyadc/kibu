@@ -33,7 +33,7 @@ export function onStart(request: string): Line {
   if (/\b(organi[sz]e|tidy|clean|sort)\b/.test(r)) return { text: pick(['Ooh, tidying. My favourite.', 'Let’s make it neat.']), mood: 'determined' }
   if (/\b(rename)\b/.test(r)) return { text: 'Giving them proper names.', mood: 'determined' }
   if (/\?\s*$/.test(r)) return { text: 'Good question. One sec.', mood: 'thinking' }
-  return { text: pick(['On it.', 'Got it — on it.', 'Leave it with me.']), mood: 'determined' }
+  return { text: pick(['On it.', 'Got it. On it.', 'Leave it with me.']), mood: 'determined' }
 }
 
 /** A kind word during a long job, grounded in what the task actually knows. */

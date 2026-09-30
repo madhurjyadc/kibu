@@ -103,8 +103,8 @@ function Link({ href, children }: { href: string; children: ReactNode }): React.
   return <button className="md-link" title={href} onClick={() => void window.kibu.openUrl(href).catch(() => {})}>{children}</button>
 }
 
-/** "**Files** — find and sort things": a label and what it means. */
-const TERM = /^\*\*([^*]{1,40})\*\*\s*(?:[—–:-]\s*)?(.+)$/
+/** "**Files**: find and sort things": a label and what it means. */
+const TERM = /^\*\*([^*]{1,40})\*\*\s*(?:[\u2014–:-]\s*)?(.+)$/
 
 function Item({ text, id }: { text: string; id: string }): React.JSX.Element {
   const term = TERM.exec(text)

@@ -10,7 +10,7 @@ const RUNNING = ['pending', 'observing', 'planning', 'executing', 'verifying', '
 /**
  * What Kibu is saying right now: one line while it works, the question when it
  * stops to ask, the outcome with its evidence when it is done. Everything
- * else — the tool calls, the verifications, the log — lives behind /steps.
+ * else (the tool calls, the verifications, the log) lives behind /steps.
  */
 export function Reply({
   task,
@@ -43,7 +43,7 @@ export function Reply({
         report.reversed === 0 && report.skipped.length === 0
           ? 'Nothing to undo.'
           : `${report.reversed} restored` +
-              (report.skipped.length ? `, left ${report.skipped.length} alone — ${report.skipped[0]!.reason}` : '')
+              (report.skipped.length ? `, left ${report.skipped.length} alone: ${report.skipped[0]!.reason}` : '')
       )
     } catch (error) {
       setUndoNote(error instanceof Error ? error.message : 'Couldn’t undo that change.')
@@ -134,7 +134,7 @@ function took(task: TaskState): string {
  * One piece of evidence.
  *
  * A path is a thing you open, so the row is a target with its action on the
- * right. Text is something to read, so it gets the full width and wraps —
+ * right. Text is something to read, so it gets the full width and wraps;
  * squeezing prose into a right-hand column is what made these unreadable.
  */
 function Proof({ evidence, onWorkspace }: { evidence: Evidence; onWorkspace(): void }): React.JSX.Element {
@@ -193,7 +193,7 @@ function Proof({ evidence, onWorkspace }: { evidence: Evidence; onWorkspace(): v
 
 /**
  * Where Kibu stops and asks. Two cases share this: a real ambiguity, and a
- * request to widen what it is allowed to touch — the second says so plainly.
+ * request to widen what it is allowed to touch; the second says so plainly.
  * Answers are one keystroke: the options are numbered.
  */
 function Ask({

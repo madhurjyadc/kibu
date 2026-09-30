@@ -211,7 +211,7 @@ describe('memory in real tasks', () => {
   beforeEach(() => { fake = fakeMac(); setMacBridge(fake.mac) })
   afterEach(() => setMacBridge(osascriptBridge))
 
-  test('told, listed, and forgotten — with no model', async () => {
+  test('told, listed, and forgotten, with no model', async () => {
     const h = host()
     let t = await h.run('remember that my manager is Priya')
     assert.equal(t.status, 'succeeded')
@@ -256,7 +256,7 @@ describe('memory in real tasks', () => {
     assert.doesNotMatch(t.summary!.headline, /like last time/)
   })
 
-  test('with learning off, choices are not picked up — but told things still are', async () => {
+  test('with learning off, choices are not picked up, but told things still are', async () => {
     const h = host()
     await h.run('schedule standup tomorrow at 10am on my Home calendar', { learn: false })
     assert.equal(h.memories.length, 0)

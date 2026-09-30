@@ -58,7 +58,7 @@ export function isPanelAnimating(): boolean {
  * It is an ordinary window in every way that matters to the user: it can be
  * dragged by its header, it stays where it is put, and it stays open when
  * another application comes forward. Whether it floats above that application
- * is the user's choice, not the window's — see setPanelPinned.
+ * is the user's choice, not the window's; see setPanelPinned.
  */
 export function createPanelWindow(deps: PanelWindowDeps, placement: PanelPlacement): BrowserWindow {
   const win = new BrowserWindow({
@@ -73,7 +73,7 @@ export function createPanelWindow(deps: PanelWindowDeps, placement: PanelPlaceme
     maximizable: false,
     fullscreenable: false,
     // Kibu is rarely the active app when you reach for it. Without this, the
-    // first click on an unfocused panel — including on the minimized handle —
+    // first click on an unfocused panel, including on the minimized handle,
     // only focuses the window and is thrown away, so every button seems to
     // need two clicks.
     acceptFirstMouse: true,
@@ -88,8 +88,8 @@ export function createPanelWindow(deps: PanelWindowDeps, placement: PanelPlaceme
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // A hidden panel keeps rendering, so it is already up to date — right
-      // size, latest task — the moment it is shown, instead of flashing an old
+      // A hidden panel keeps rendering, so it is already up to date (right
+      // size, latest task) the moment it is shown, instead of flashing an old
       // frame and then catching up.
       backgroundThrottling: false
     }
@@ -231,7 +231,7 @@ export function dockPanel(win: BrowserWindow): void {
 }
 
 /**
- * Opens the island back into the panel — exactly where it was, at the size
+ * Opens the island back into the panel, exactly where it was, at the size
  * its content now needs.
  */
 export function undockPanel(win: BrowserWindow): void {

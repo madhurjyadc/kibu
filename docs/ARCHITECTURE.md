@@ -19,7 +19,7 @@ that a crashed runtime can be restarted in place (`RuntimeHost.restart`).
 ## The OS adapter (`src/os/`)
 
 `OsAdapter` is a capability interface. `supports(capability)` is the only
-correct way to ask whether something is possible — calling an unsupported
+correct way to ask whether something is possible: calling an unsupported
 operation throws `UnsupportedCapabilityError`, which the loop surfaces to the
 model as "use a different approach" rather than as a task failure.
 
@@ -56,17 +56,17 @@ observed, before any action is performed on it.
 
 Every capability is a `ToolDefinition` with:
 
-- `input` — a Zod schema, which is both the model-facing JSON schema and the
+- `input`: a Zod schema, which is both the model-facing JSON schema and the
   local validator. Model output is parsed through it before anything runs.
-- `capability` — the name used to scope which tools a task is even offered.
-- `scopes(input)` — the concrete paths, apps and origins this specific call
+- `capability`: the name used to scope which tools a task is even offered.
+- `scopes(input)`: the concrete paths, apps and origins this specific call
   needs, checked against the task's authorization.
-- `precondition` — cheap checks that make failure legible before any change.
-- `execute` — the effect, returning undo entries and evidence.
-- `verify` — independent confirmation the effect landed.
+- `precondition`: cheap checks that make failure legible before any change.
+- `execute`: the effect, returning undo entries and evidence.
+- `verify`: independent confirmation the effect landed.
 
 To add a tool, write the definition and register it. Then decide which route
-should expose it in `ROUTE_CAPABILITIES` — tool availability is scoped
+should expose it in `ROUTE_CAPABILITIES`; tool availability is scoped
 deliberately, so a folder-sorting task is never handed the browser.
 
 A tool with no `verify` can never, on its own, justify calling a task complete.
@@ -82,7 +82,7 @@ These are separate and must stay separate:
   and is checked by `checkScopes` before every call.
 
 Having Accessibility permission does not authorize any particular action, and
-observing a window does not authorize modifying anything — `observeFrontWindow`
+observing a window does not authorize modifying anything: `observeFrontWindow`
 grants the app for reading and says so in the note it gives the planner.
 
 ## Two model providers, two credentials
@@ -97,7 +97,7 @@ naming:
 | Credential | `ANTHROPIC_API_KEY` | `TYPESAFE_API_KEY` |
 | Shape | Text and tool calls | Declared typed questions → typed answers |
 | Job | Open-ended planning | Fast structured decisions |
-| Required? | Yes | No — local rules are the fallback |
+| Required? | Yes | No. Local rules are the fallback |
 
 Both are stored separately via `Secrets`, encrypted through `safeStorage`.
 

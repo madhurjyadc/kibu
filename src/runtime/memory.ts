@@ -4,7 +4,7 @@ import type { Jev } from './model/jev.js'
 import type { Memory } from '../shared/types.js'
 
 /**
- * What Kibu remembers, and — more importantly — when it brings it up.
+ * What Kibu remembers, and, more importantly, when it brings it up.
  *
  * The rule is relevance. A memory reaches a task only when it would help with
  * that task: "my manager is Priya" belongs in "email my manager", not in

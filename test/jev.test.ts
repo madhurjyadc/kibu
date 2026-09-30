@@ -6,7 +6,7 @@ import { defaultLimits, emptyAuthorization, type ActionRecord, type TaskState } 
 
 /**
  * Jev is exercised through a stubbed transport, so these tests cover our use
- * of the API — the request we send and how we treat the answer — without
+ * of the API (the request we send and how we treat the answer) without
  * calling TypeSafe or needing a key.
  */
 function stubFetch(body: unknown, status = 200) {

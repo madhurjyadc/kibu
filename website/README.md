@@ -2,6 +2,8 @@
 
 A lightweight, standalone static site. `dist/` contains the complete deployable website. No install or build step is required.
 
+Live at https://getkibu.vercel.app.
+
 ## Preview
 
 From this directory:
@@ -12,15 +14,29 @@ python3 -m http.server 4173 --directory dist
 
 Open http://localhost:4173.
 
+## Deploying
+
+The site is the Vercel project `kibu`. `vercel.json` serves `dist/` as it is,
+with no build step, and `.vercelignore` keeps the teaser video out of the upload.
+From this directory:
+
+```sh
+vercel --prod
+```
+
+The social preview tags in `dist/index.html` (`canonical`, `og:url`, `og:image`)
+hold the site's address. Change them if the domain changes.
+
 ## Content and behavior
 
-- `dist/index.html`: marketing copy, GitHub calls to action, social title/description metadata.
+- `dist/index.html`: the whole page and its social metadata. In order: the opening screen with the demo, what Kibu does, how you stay in control, the agent Kibu needs, install steps, permissions and privacy, the playground, and questions.
 - `dist/styles.css`: app-inspired obsidian/lime visual design and responsive layouts.
+- `dist/launch.css`: the sections added for launch. Hairline rows rather than cards, and 5 × 5 dot glyphs in the language of Kibu's face as icons.
 - `dist/app.js`: simulated Find, Organize, and Rename demos. No visitor files are accessed; no model connection is required.
-- `dist/assets/`: actual Kibu sprite exports from the app's `Sprite.tsx`, not new character artwork.
-- `.openai/hosting.json`: Sites deployment identity and static directory.
+- `dist/assets/`: actual Kibu sprite exports from the app's `Sprite.tsx`, not new character artwork, plus `og.png` (the 1200 × 630 link preview) and `apple-touch-icon.png`.
+- `.openai/hosting.json`: the earlier Sites deployment identity.
 
-The GitHub destination is https://github.com/madhurjyadc/kibu. The page accurately labels Kibu as in development; it does not advertise an installer, pricing, customer numbers, or unverified app integrations.
+The GitHub destination is https://github.com/madhurjyadc/kibu. Every claim on the page comes from the app's own tour, the README or `docs/TESTED.md`: macOS 14 or later on Apple silicon, an agent to plan with (Claude Code, Codex, OpenCode or an Anthropic API key), installed from source with one command. It calls Kibu an early release and does not advertise a download, pricing, customer numbers, or unverified app integrations. When the app changes what it needs or does, change the page with it.
 
 ## Character playground
 
@@ -40,21 +56,26 @@ sample files only.
 - `dist/faces.js` reuses the actual app's face generator. Regenerate after changing
   the character with `node website/sync-character.mjs` from the repository root.
 
-## Opening-screen layout
+## Responsive layout and typography
 
-`dist/viewport.css` adapts the entire hero composition to the available screen
-height using `svh`, with compact phone and landscape layouts. The header,
-headline, GitHub link, and demo controls fit in the first viewport. Further
-sections remain in normal document flow; no scroll locking or whole-page scaling
-is used. Content can grow naturally with enlarged text.
+`dist/viewport.css` lets the hero grow with its content. Below 1050px the
+copy and demo stack; phones use a flat file window and full-width task controls.
+The design does not shrink text to fit a single screen. Section layouts,
+commands and touch controls also adapt to narrow screens.
 
-Checked at 320×568, 375×667, 390×844, 768×1024, 1024×768, 1366×650,
-1470×836, and phone landscape sizes. The Organize demo also passed at 320×568.
+`dist/retro.css` keeps self-hosted Pixelify Sans for the wordmark and Kibu’s
+speech bubbles. Headings, body text and labels use system fonts for readability.
+`dist/launch.css` supplies section spacing, contrast and the open-source badge.
+The Pixelify font license is at `dist/assets/fonts/OFL.txt`.
 
-## Retro typography
+## GitHub stars
 
-`dist/retro.css` uses self-hosted Pixelify Sans for headings, the wordmark, small
-section labels, and Kibu's speech bubbles. Body copy and control labels keep the
-system sans-serif for readability. Font source: https://github.com/google/fonts/tree/main/ofl/pixelifysans.
-The SIL Open Font License is included at `dist/assets/fonts/OFL.txt`.
-The first viewport still fits at desktop, 320px-wide phone, and landscape sizes.
+`dist/github.js` reads the public repository’s star count from GitHub’s API.
+It displays the exact count, including zero, and falls back to a working
+“Star on GitHub” link if the request fails, times out or is rate-limited.
+No token, tracking service or hard-coded count is used.
+
+Verified at 320×568, 390×844, 600×800, 768×1024, 844×390, 1024×768,
+1440×1000 and 1920×1080. Browser checks cover horizontal overflow, all three
+demos, copying the install command, FAQ disclosure, the pet’s nap control,
+and GitHub success and failure states. Motion preferences remain respected.

@@ -288,6 +288,6 @@ test('a narrated non-answer is recognised, a real answer is not', async () => {
   assert.equal(isNarration('Answering directly, no actions needed.'), true)
   assert.equal(isNarration('No actions needed.'), true)
   assert.equal(isNarration("I'm answering from what I know."), true)
-  assert.equal(isNarration('Not yet — I remember your recent tasks in History, but nothing long-term.'), false)
+  assert.equal(isNarration('Not yet \u2014 I remember your recent tasks in History, but nothing long-term.'), false)
   assert.equal(isNarration('Yes. No tools needed for that, though: just press ⌘⇧K.'), false)
 })

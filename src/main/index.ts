@@ -197,7 +197,7 @@ function setPetState(state: PetState): void {
  * Builds the initial authorization for a task.
  *
  * Dropping files onto the pet is itself an act of authorization: it names
- * exactly what the user means. Nothing else is granted up front — anything
+ * exactly what the user means. Nothing else is granted up front; anything
  * wider has to be asked for, in context, while the task runs.
  */
 function seedAuthorization(req: StartTaskRequest) {
@@ -412,7 +412,7 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
 
 /**
  * When the panel gained and lost focus. A click on the pet activates Kibu,
- * and macOS hands focus back to the panel during that same click — so asking
+ * and macOS hands focus back to the panel during that same click, so asking
  * "is the panel focused?" when the click arrives always says yes. Asking what
  * it was just before the button went down gives the real answer.
  */
@@ -592,7 +592,7 @@ function createTray(): void {
   const image = existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty()
   image.setTemplateImage(true)
   tray = new Tray(image)
-  tray.setToolTip('Kibu — click to open, right-click for more')
+  tray.setToolTip('Kibu: click to open, right-click for more')
   // One click opens Kibu. A context menu set with setContextMenu would take
   // the left click on macOS, so it is popped up on right-click instead.
   const menu = (): Electron.Menu =>
@@ -616,7 +616,7 @@ function createTray(): void {
 }
 
 /* ------------------------------------------------------------------ *
- * IPC — the only path from the unprivileged renderer into privileged code.
+ * IPC: the only path from the unprivileged renderer into privileged code.
  * Every handler validates its own input.
  * ------------------------------------------------------------------ */
 
@@ -814,7 +814,7 @@ function registerIpc(): void {
       if (typeof value === 'string') next[key] = value.trim()
     }
     if (next.shortcut !== undefined && (typeof next.shortcut !== 'string' || !/^[A-Za-z0-9+]{1,60}$/.test(next.shortcut))) throw new Error('That is not a shortcut.')
-    if (next.shortcut !== undefined && /^(Command|CommandOrControl|CmdOrCtrl|Cmd)\+Space$/.test(next.shortcut)) throw new Error('⌘ Command + Space opens Spotlight. Pick another — ⌥ Option + Space is the default.')
+    if (next.shortcut !== undefined && /^(Command|CommandOrControl|CmdOrCtrl|Cmd)\+Space$/.test(next.shortcut)) throw new Error('⌘ Command + Space opens Spotlight. Pick another. ⌥ Option + Space is the default.')
     const before = settings.shortcut
     const updated = saveSettings(next ?? {})
     // A key another app holds falls back to a free one, which is saved: report that one.

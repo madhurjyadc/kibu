@@ -79,7 +79,7 @@ export const filesList: ToolDefinition = {
   /**
    * No grant needed.
    *
-   * This returns names, sizes and dates — what the user already sees in their
+   * This returns names, sizes and dates, what the user already sees in their
    * own Finder window. Asking permission to look at a folder listing, before
    * being allowed to answer "where is my invoice", was most of why Kibu felt
    * like it was interrogating people. Contents are different: files_read
@@ -133,7 +133,7 @@ export const filesInspect: ToolDefinition = {
   /**
    * No grant needed.
    *
-   * This returns names, sizes and dates — what the user already sees in their
+   * This returns names, sizes and dates, what the user already sees in their
    * own Finder window. Asking permission to look at a folder listing, before
    * being allowed to answer "where is my invoice", was most of why Kibu felt
    * like it was interrogating people. Contents are different: files_read
@@ -162,7 +162,7 @@ export const filesSearch: ToolDefinition = {
   /**
    * No grant needed.
    *
-   * This returns names, sizes and dates — what the user already sees in their
+   * This returns names, sizes and dates, what the user already sees in their
    * own Finder window. Asking permission to look at a folder listing, before
    * being allowed to answer "where is my invoice", was most of why Kibu felt
    * like it was interrogating people. Contents are different: files_read

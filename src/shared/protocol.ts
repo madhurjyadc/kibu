@@ -140,7 +140,7 @@ export type HostToRuntime =
        */
       frontWindow: FrontWindow | null
       /**
-       * The name of the app the person was in, sent with every task — unlike
+       * The name of the app the person was in, sent with every task, unlike
        * frontWindow, which only travels when they choose to include the
        * window. A name grants nothing; it tells "save this" which app "this"
        * was in.
@@ -311,7 +311,7 @@ export interface KibuBridge {
   hasClaudeCode(): Promise<boolean>
   /** Which coding apps are installed, so settings offers only what works. */
   codingApps(): Promise<CodingAppStatus[]>
-  /** Whether any planning route is configured — a key, or Claude Code. */
+  /** Whether any planning route is configured: a key, or Claude Code. */
   canWork(): Promise<boolean>
   /** Times each route a request can take on this machine. */
   runBench(): Promise<BenchRow[]>

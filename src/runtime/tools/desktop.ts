@@ -6,7 +6,7 @@ import type { ToolContext, ToolDefinition } from './registry.js'
 /**
  * Element references handed to the model are opaque strings. We keep the real
  * ElementRef here, keyed by task, and refuse to act on one that came from a
- * snapshot other than the most recent — that is what stops the assistant from
+ * snapshot other than the most recent; that is what stops the assistant from
  * clicking where a button used to be.
  */
 interface ElementCacheEntry {
@@ -153,7 +153,7 @@ export const desktopInspectWindow: ToolDefinition = {
     const summary = summarizeSnapshot(snap, ctx.task.id)
     ctx.observe({
       kind: 'window',
-      summary: `${snap.app.name} — "${snap.title}" (${summary.elements.length} controls)`,
+      summary: `${snap.app.name}, "${snap.title}" (${summary.elements.length} controls)`,
       data: { app: snap.app.name, title: snap.title, controls: summary.elements.length },
       staleAfterMs: SNAPSHOT_TTL_MS
     })
@@ -191,7 +191,7 @@ export const desktopFocusWindow: ToolDefinition = {
 export const desktopPressElement: ToolDefinition = {
   name: 'desktop_press_element',
   description:
-    'Perform an accessibility action on an element from desktop_inspect_window — the reliable way to press a button or pick a menu item. Fails cleanly if the window changed, which means you should re-inspect rather than retry.',
+    'Perform an accessibility action on an element from desktop_inspect_window. This is the reliable way to press a button or pick a menu item. Fails cleanly if the window changed, which means you should re-inspect rather than retry.',
   capability: 'desktop.control',
   exclusiveDesktop: true,
   input: z.object({
@@ -231,7 +231,7 @@ export const desktopSetValue: ToolDefinition = {
 export const desktopClick: ToolDefinition = {
   name: 'desktop_click',
   description:
-    'Click at a screen point. This is the fallback for when an element exposes no accessibility action — prefer desktop_press_element. Coordinates are in points with the origin at the top-left of the primary display.',
+    'Click at a screen point. This is the fallback for when an element exposes no accessibility action; prefer desktop_press_element. Coordinates are in points with the origin at the top-left of the primary display.',
   capability: 'desktop.control',
   exclusiveDesktop: true,
   input: z.object({
@@ -316,7 +316,7 @@ export const desktopScroll: ToolDefinition = {
 export const desktopCaptureWindow: ToolDefinition = {
   name: 'desktop_capture_window',
   description:
-    'Take a picture of one application window. Use only when accessibility gives you nothing usable — it costs more and reveals screen contents to the vision model. Never use it to watch continuously.',
+    'Take a picture of one application window. Use only when accessibility gives you nothing usable: it costs more and reveals screen contents to the vision model. Never use it to watch continuously.',
   capability: 'desktop.capture',
   input: z.object({ pid: z.number().int(), appName: z.string() }),
   scopes: (i) => [{ kind: 'app', name: i.appName }],
@@ -371,7 +371,7 @@ export const screenLook: ToolDefinition = {
     const summary = i.controls ? summarizeSnapshot(front, ctx.task.id) : null
     ctx.observe({
       kind: 'screen',
-      summary: `In front: ${front.app.name} — "${front.title}"` + (summary ? ` (${summary.elements.length} controls)` : ''),
+      summary: `In front: ${front.app.name}, "${front.title}"` + (summary ? ` (${summary.elements.length} controls)` : ''),
       data: { app: front.app.name, title: front.title, others: others.length },
       staleAfterMs: SNAPSHOT_TTL_MS
     })
@@ -391,7 +391,7 @@ export const screenLook: ToolDefinition = {
 
 /**
  * What Kibu may do in other apps: look at windows, bring one forward, and
- * press buttons or fill fields through accessibility actions — none of which
+ * press buttons or fill fields through accessibility actions, none of which
  * moves the pointer or presses a key.
  */
 export const desktopTools: ToolDefinition[] = [

@@ -12,7 +12,7 @@ import {
 import type { TaskState } from '../../shared/types.js'
 
 /**
- * Jev — TypeSafe AI's System One model, used for narrow structured judgments.
+ * Jev, TypeSafe AI's System One model, used for narrow structured judgments.
  *
  * Jev is not a text model. You hand it state plus a set of declared typed
  * questions, and it answers all of them in one round trip with probabilities.
@@ -182,7 +182,7 @@ export class Jev {
    * Whether the browser Kibu opened should be closed now the task is done.
    *
    * Both answers are defined here, in code; Jev only picks between them, and
-   * a missing or unsure answer leaves the window open — the outcome that
+   * a missing or unsure answer leaves the window open: the outcome that
    * cannot lose anything.
    */
   async shouldCloseBrowser(request: string): Promise<boolean> {
@@ -264,7 +264,7 @@ export class Jev {
   private routeLocally(request: string, hasDroppedPaths: boolean): RouteDecision {
     const r = request.toLowerCase()
     // Naming a site, or a domain, is as plain a web signal as saying "website".
-    // This list will never be complete — that is exactly why an unsure answer
+    // This list will never be complete; that is exactly why an unsure answer
     // goes to Jev rather than to a bigger list.
     const site =
       /\b(youtube|netflix|gmail|google|twitter|x\.com|reddit|amazon|instagram|facebook|spotify|wikipedia|github|linkedin|maps|chatgpt)\b/.test(r) ||
@@ -312,8 +312,8 @@ export class Jev {
    *
    *   - which tool families the request needs, so the planner is shown a
    *     short menu instead of every tool (a shorter prompt is a faster step);
-   *   - which parts of "this" to fetch up front — selection, browser tab,
-   *     Finder selection, clipboard — so the planner starts with them rather
+   *   - which parts of "this" to fetch up front (selection, browser tab,
+   *     Finder selection, clipboard), so the planner starts with them rather
    *     than asking for them;
    *   - whether the job is small enough for the quick model.
    *
@@ -342,7 +342,7 @@ export class Jev {
           tab: family('Does the request refer to the web page or site the user has open?'),
           finder: family('Does it refer to files the user has selected in Finder?'),
           clipboard: family('Does the user mention something they copied, or the clipboard?'),
-          ownBrowser: family("Is this personal browsing best done in the user's own signed-in browser — watching, listening, their feed, their accounts, their inbox — rather than an unattended job like downloading or filling in a form?"),
+          ownBrowser: family("Is this personal browsing best done in the user's own signed-in browser (watching, listening, their feed, their accounts, their inbox) rather than an unattended job like downloading or filling in a form?"),
           start: choice('Where would a person start this on the web?', {
             feed: 'Their personalised home feed or recommendations, because they want something good rather than one specific thing.',
             search: 'A search, because they named a specific thing, topic or question.',
@@ -396,7 +396,7 @@ export class Jev {
    * ---------------------------------------------------------------- */
 
   /**
-   * Local rules only. Same history in, same verdict out, every time — a
+   * Local rules only. Same history in, same verdict out, every time: a
    * failure budget that a probability could talk its way past would not be a
    * budget. `assessProgress` layers Jev on top of this without replacing it.
    */
@@ -445,8 +445,8 @@ export class Jev {
 
   /**
    * The verdict the loop uses. Local rules decide first. Jev is consulted only
-   * for the ambiguous middle — no rule fired, but the recent history is untidy
-   * — and its answer is clamped so it can only increase caution.
+   * for the ambiguous middle (no rule fired, but the recent history is untidy),
+   * and its answer is clamped so it can only increase caution.
    */
   async assessProgress(task: TaskState): Promise<ProgressVerdict> {
     const local = this.assessProgressLocally(task)
@@ -510,7 +510,7 @@ export class Jev {
   /**
    * Assigns files to groups that already exist.
    *
-   * Jev chooses between declared labels, so it cannot name the groups — the
+   * Jev chooses between declared labels, so it cannot name the groups; the
    * planning model proposes those, and Jev does the bulk assignment in one
    * round trip instead of one model call per file. The result is a proposal
    * that still goes to the user as a preview before anything moves.

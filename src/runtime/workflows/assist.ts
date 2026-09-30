@@ -14,7 +14,7 @@ import type { Workflow, WorkflowContext, WorkflowResult } from './types.js'
  *
  * The workflow rule holds here too. Titles and times are read out of the
  * user's own words by local code; Jev only chooses between things that code
- * built — which of two readings of "at 5", which of the user's real
+ * built: which of two readings of "at 5", which of the user's real
  * calendars, which of their real shortcuts. When a request needs anything
  * invented, the workflow hands it to the planner.
  */
@@ -121,7 +121,7 @@ export const reminderWorkflow: Workflow = {
         ...(list ? { list } : {})
       })
       const when = due ? ` ${describeTime(due, reading?.dateOnly)}` : ''
-      const evidence: Evidence[] = [{ kind: 'text', label: `Reminders · ${made.list}`, value: `${title}${when ? ` —${when}` : ''}` }]
+      const evidence: Evidence[] = [{ kind: 'text', label: `Reminders · ${made.list}`, value: `${title}${when ? ` ·${when}` : ''}` }]
       if (remembered) evidence.push(ctx.memory.used(remembered))
       // Naming a specific list is a choice worth keeping for next time.
       if (named && !generic(named) && ctx.memory.learn) {
@@ -195,7 +195,7 @@ export const eventWorkflow: Workflow = {
       })
       const when = describeTime(start, reading.dateOnly)
       const clash = clashes.filter((e) => !e.allDay)[0]
-      const evidence: Evidence[] = [{ kind: 'text', label: `Calendar${calendar ? ` · ${calendar}` : ''}`, value: `${title} — ${when}` }]
+      const evidence: Evidence[] = [{ kind: 'text', label: `Calendar${calendar ? ` · ${calendar}` : ''}`, value: `${title} · ${when}` }]
       if (remembered) evidence.push(ctx.memory.used(remembered))
       // Naming the calendar is the person's choice; keep it for events like this one.
       if (named && calendars.length > 1 && ctx.memory.learn) {
@@ -204,7 +204,7 @@ export const eventWorkflow: Workflow = {
       }
       return {
         success: true,
-        headline: `Added "${title}" ${when}${calendar ? ` to ${calendar}` : ''}${remembered ? ', like last time' : ''}.${clash ? ` Heads up — it overlaps "${clash.title}".` : ''}`,
+        headline: `Added "${title}" ${when}${calendar ? ` to ${calendar}` : ''}${remembered ? ', like last time' : ''}.${clash ? ` Heads up: it overlaps "${clash.title}".` : ''}`,
         evidence
       }
     } catch (err) {

@@ -12,7 +12,7 @@ import type { Workflow, WorkflowContext, WorkflowResult } from './types.js'
  *
  * Read entirely in code. This is the shape where a planning model is worst
  * value for money: the sentence is simple, the actions are few, and the user
- * is standing there waiting — several seconds of planning to run one mkdir is
+ * is standing there waiting; several seconds of planning to run one mkdir is
  * absurd. Local patterns produce the steps; the macOS index resolves which
  * folder and which application was meant; Jev is asked only when more than
  * one real candidate exists, choosing between things this code found.
@@ -168,7 +168,7 @@ export async function buildPlan(
  *
  * Tries the obvious literal places first, because "dev" almost always means
  * ~/dev and a hit there costs nothing. Only when several real candidates
- * exist does Jev pick between them — and it picks from paths this code found,
+ * exist does Jev pick between them, and it picks from paths this code found,
  * never a path it invented.
  */
 async function resolveFolder(name: string, ctx: Pick<WorkflowContext, 'ask' | 'log'>): Promise<string | null> {

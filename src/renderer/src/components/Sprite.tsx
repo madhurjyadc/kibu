@@ -6,8 +6,8 @@ export interface Look { x: number; y: number }
 
 /**
  * Everything Kibu can show. Runtime state picks a default (see MOOD_FOR);
- * the pet window layers the moment-to-moment ones — being hovered, dragged,
- * fed a file, left alone — on top.
+ * the pet window layers the moment-to-moment ones (being hovered, dragged,
+ * fed a file, left alone) on top.
  */
 export type Mood =
   | 'idle' | 'happy' | 'excited' | 'listening' | 'curious' | 'thinking' | 'working' | 'straining'
@@ -30,7 +30,7 @@ export const MOOD_FOR: Record<PetState, Mood> = {
 /*
  * Kibu is a small obsidian pebble with a dot-matrix face. The display is the
  * whole personality: 15 × 11 dots that draw eyes and a mouth, and double as a
- * status readout — a scanner while it works, a question mark when it needs
+ * status readout: a scanner while it works, a question mark when it needs
  * you. One glyph language carries both emotion and information.
  */
 const COLS = 15
@@ -116,7 +116,7 @@ interface Face {
   eyesAt?: (t: number) => [string, string]
 }
 
-/** Draws a run of dots — brows, sunglasses, confetti trails. */
+/** Draws a run of dots: brows, sunglasses, confetti trails. */
 function dots(g: Grid, cells: [number, number][], tone: Cell = 'on'): void {
   for (const [c, r] of cells) if (c >= 0 && c < COLS && r >= 0 && r < ROWS) g.set(r * COLS + c, tone)
 }

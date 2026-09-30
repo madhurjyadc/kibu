@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { Jev } from '../src/runtime/model/jev.js'
 import { routeToWorkflow } from '../src/runtime/workflows/index.js'
 
-/** With no key, Jev falls back to the local keyword rules — what we want to test. */
+/** With no key, Jev falls back to the local keyword rules, which is what we want to test. */
 const local = new Jev(null, false)
 const ctx = { ask: async () => null, log: () => {} }
 

@@ -49,8 +49,8 @@ export function isForbidden(path: string): boolean {
 /**
  * Decides whether the requested scopes fall inside the task's authorization.
  *
- * This is deliberately local, deterministic code. No model output — including
- * a confident Jev classification — can stand in for this check.
+ * This is deliberately local, deterministic code. No model output, including
+ * a confident Jev classification, can stand in for this check.
  */
 export function checkScopes(auth: Authorization, requests: ScopeRequest[]): ScopeDecision {
   const missing: ScopeRequest[] = []
@@ -113,7 +113,7 @@ export function extendAuthorization(auth: Authorization, grant: Partial<Authoriz
  * The folder a "yes" covers: a folder itself, or the folder a file sits in.
  *
  * Granting only the exact file meant the next file in the same folder asked
- * again — tidying a Desktop once took fifty separate "Allow" clicks. Nobody
+ * again: tidying a Desktop once took fifty separate "Allow" clicks. Nobody
  * means "you may move this screenshot but not the one next to it". The home
  * folder and the disk root are never widened to: a file sitting directly in
  * either is granted on its own.

@@ -1,6 +1,6 @@
 /**
- * Reads times out of everyday phrasing — "tomorrow at 5", "next friday 3pm",
- * "in 20 minutes", "tonight" — with no model involved.
+ * Reads times out of everyday phrasing ("tomorrow at 5", "next friday 3pm",
+ * "in 20 minutes", "tonight") with no model involved.
  *
  * The one genuinely ambiguous case, an hour with no am/pm ("at 5"), is not
  * guessed here: both readings come back as candidates, so a caller can let
@@ -168,7 +168,7 @@ export function stripTime(text: string, reading: TimeReading | null): string {
     .replace(/^[\s,.:;-]+|[\s,.:;!-]+$/g, '')
 }
 
-/** "Tue 30 Sep, 5:00 pm" — how a time is shown back to the person. */
+/** "Tue 30 Sep, 5:00 pm": how a time is shown back to the person. */
 export function describeTime(d: Date, dateOnly = false, now = new Date()): string {
   const today = atDay(now, 0).getTime()
   const day = atDay(d, 0).getTime()

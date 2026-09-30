@@ -8,7 +8,7 @@ import type { Workflow, WorkflowContext, WorkflowResult } from './types.js'
  *
  * The naming schemes are fixed functions, so the rename itself is fully
  * deterministic and previewable. Jev's only job is picking which scheme the
- * user meant — exactly a choice between declared options.
+ * user meant: exactly a choice between declared options.
  */
 
 type Scheme = (name: string, index: number, file: FileEntry) => string
@@ -122,7 +122,7 @@ export const renameWorkflow: Workflow = {
       ]
     })
     if (approval.optionId !== 'approve') {
-      return { success: false, headline: 'Cancelled — nothing was renamed.', evidence: [], unresolved: 'user declined' }
+      return { success: false, headline: 'Cancelled. Nothing was renamed.', evidence: [], unresolved: 'user declined' }
     }
 
     ctx.progress(`Renaming ${ops.length} files`)

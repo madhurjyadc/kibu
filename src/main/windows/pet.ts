@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 // Wide enough for the creature to speak in whole words. The window is mostly
 // empty space, which is why it ignores the mouse everywhere the creature is
-// not — see setPetInteractive.
+// not; see setPetInteractive.
 const PET_WIDTH = 260
 const PET_HEIGHT = 190
 
@@ -17,7 +17,7 @@ export interface PetWindowDeps {
  * The pet window.
  *
  * It sits above other windows without ever taking focus, so it cannot steal
- * the user's typing. It is transparent and frameless — the visible pet is just
+ * the user's typing. It is transparent and frameless: the visible pet is just
  * what the renderer paints.
  */
 export function createPetWindow(deps: PetWindowDeps, saved: { x: number; y: number }, showAtStart = true): BrowserWindow {

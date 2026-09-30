@@ -11,13 +11,13 @@ import type { ToolDefinition } from './registry.js'
  * Finding a file the user half-remembers.
  *
  * The old implementation walked directories and never matched on the words
- * the user actually typed — it fetched every recent file of a type and sorted
+ * the user actually typed: it fetched every recent file of a type and sorted
  * by date, which is not a search. This asks Spotlight's index instead: the
  * same index the Finder uses, already built, covering filenames *and* file
  * contents, and it answers across a whole home directory in about 200ms.
  *
  * It needs no authorization prompt because it cannot change anything and
- * never returns file contents — only paths and their metadata, for locations
+ * never returns file contents, only paths and their metadata, for locations
  * the user can already see in their own Finder. Opening one of the results is
  * a separate, explicit act.
  */
@@ -52,7 +52,7 @@ export const filesFind: ToolDefinition = {
     "Find files the user is describing from memory, by name and by what is inside them, anywhere in their home folder. Uses the macOS Spotlight index, so it is fast and covers file contents. Prefer this over files_search whenever you are looking for something rather than listing a known folder.",
   capability: 'files.read',
   input: z.object({
-    terms: z.string().describe('The distinctive words to look for, e.g. "ethernet frames" — not the whole sentence'),
+    terms: z.string().describe('The distinctive words to look for, e.g. "ethernet frames", not the whole sentence'),
     extensions: z.array(z.string()).optional().describe('Restrict to these extensions, e.g. [".pdf"]'),
     modifiedAfter: z.number().optional().describe('Unix ms; only files changed since then'),
     minBytes: z.number().optional().describe('Only files at least this large, for "big files" requests'),
@@ -184,7 +184,7 @@ export async function findFiles(opts: FindOptions): Promise<FoundFile[]> {
 /**
  * Ranking, in code rather than by a model.
  *
- * A model scoring bare filenames is both slower and worse — "cls1.pdf" tells
+ * A model scoring bare filenames is both slower and worse: "cls1.pdf" tells
  * it nothing. These signals are cheap, explainable, and the reason each hit
  * won is reported back so the user can see why.
  */
@@ -246,7 +246,7 @@ function rank(
  *
  * The terms are OR-ed, not AND-ed: "the cybersecurity notes I downloaded"
  * should still find CyberSecurity.pdf even though no file is called "notes".
- * Requiring every word found nothing at all, which is the worse failure —
+ * Requiring every word found nothing at all, which is the worse failure;
  * ranking sorts out which of the loose matches actually wins.
  */
 function buildQuery(
@@ -316,7 +316,7 @@ export interface ParsedQuery {
  * Reads the sentence the way a person means it, in code.
  *
  * "the pdf I downloaded yesterday" is a type filter, a time filter and a
- * place — not three search words. Asking a model to work that out costs
+ * place, not three search words. Asking a model to work that out costs
  * hundreds of milliseconds and gets it no more right than these rules do.
  */
 export function parseQuery(text: string): ParsedQuery {

@@ -8,7 +8,7 @@ import type { Workflow, WorkflowContext, WorkflowResult } from './types.js'
  * "Find the PDF I downloaded yesterday."
  *
  * This used to ask Jev to pick filters, search one guessed folder by date
- * only — never by the words the user typed — and then ask which of five
+ * only, never by the words the user typed, and then ask which of five
  * files they meant. It found the wrong thing slowly and made the user do the
  * work.
  *
@@ -32,7 +32,7 @@ export const findWorkflow: Workflow = {
 
   async run(request, droppedPaths, ctx): Promise<WorkflowResult> {
     const parsed = parseQuery(request)
-    // What kind of thing, how big, how recent, where — read once, by Jev when
+    // What kind of thing, how big, how recent, where: read once, by Jev when
     // local rules were not certain. This is what makes "any movies to watch?"
     // and "find big files" work: neither says "mp4" or gives a byte count.
     const read = ctx.understanding()
@@ -45,7 +45,7 @@ export const findWorkflow: Workflow = {
     const named = parsed.folder ?? folderFor(read.place)
     // Precedence: a folder the user actually put in front of me, then one they
     // named in the sentence, then their whole home. Searching everything is
-    // the right default — the index makes it cheap — but never when they have
+    // the right default (the index makes it cheap), but never when they have
     // already said where to look.
     const scoped = ctx.authorizedRoots()
     const root = scoped[0] ?? (named ? join(homedir(), named) : homedir())

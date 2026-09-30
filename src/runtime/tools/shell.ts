@@ -186,7 +186,7 @@ export const shellRun: ToolDefinition = {
   capability: 'shell.run',
   input: z.object({
     program: z.string().describe('The program, e.g. "mkdir"'),
-    args: z.array(z.string()).default([]).describe('Arguments, one per array entry — never a single joined string'),
+    args: z.array(z.string()).default([]).describe('Arguments, one per array entry, never a single joined string'),
     cwd: z.string().optional().describe('Directory to run in; defaults to your home folder')
   }),
   scopes: (i) => commandScopes(vetCommand(i.program, i.args, i.cwd)),

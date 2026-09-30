@@ -1,14 +1,20 @@
 @font-face { font-family: 'Pixelify Sans'; src: url('../assets/fonts/PixelifySans.ttf') format('truetype'); font-weight: 400 700; font-display: swap; }
 /*
- * Kibu — "Obsidian".
+ * Kibu, "Obsidian".
  * A command bar first and a companion second: black glass, one signal-lime
  * accent, monospaced micro-type for anything that is status rather than
  * content. The pebble's dot-matrix face is the only illustration, so the
  * rest of the interface stays quiet and exact.
  *
- * From the website: pixel lettering wherever Kibu itself speaks or names a
- * state (never for reading), and a hard 2px drop under the lime buttons so
- * the one accent feels pressable. Everything else is the glass above.
+ * From the website: a hard 2px drop under the lime buttons so the one accent
+ * feels pressable, and pixel lettering in exactly one place, the pet's speech
+ * bubble. It is charming there and tiring to read anywhere else, so titles,
+ * status chips and labels use the system font.
+ *
+ * The pixel face is drawn on a grid of 11 squares to the em, so it is only
+ * sharp where a square covers whole screen pixels: 11px, 16.5px (three device
+ * pixels on a Retina display) and 22px, at weight 400, with smoothing off.
+ * Any other size or weight lands between pixels and macOS blurs every edge.
  */
 :root {
   color-scheme: dark;
@@ -34,6 +40,7 @@
   --display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
   --pixel: 'Pixelify Sans', var(--mono);
+  --px-m: 400 16.5px/20px var(--pixel);
   --press: 0 2px 0 #6f8a12;
   font: 13px/1.5 var(--sans);
 }
@@ -151,7 +158,7 @@ kbd { font: 500 10px/1 var(--mono); color: var(--dim); border: 1px solid var(--h
 
 /* secondary pages */
 .page-heading { display: flex; align-items: center; gap: 6px; margin: 2px 0 12px; }
-h1 { font: 500 17px/1.2 var(--pixel); letter-spacing: 0; }
+h1 { font: 600 17px/1.2 var(--display); letter-spacing: -.3px; }
 h2 { font: 600 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--faint); }
 .subtle-button { margin-left: auto; color: var(--dim); font-size: 12px; padding: 5px 10px; border-radius: 8px; } .subtle-button:hover { background: var(--hover); color: var(--fg); }
 .pane { display: flex; flex-direction: column; gap: 10px; }
@@ -162,14 +169,14 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 
 /* task */
 .task-page { padding: 4px 4px 0; position: relative; }
-/* Status: one chip everywhere — a 5 × 5 dot glyph in Kibu's face language,
-   a word in its pixel voice, and a quiet mono detail such as elapsed time. */
+/* Status: one chip everywhere: a 5 × 5 dot glyph in Kibu's face language,
+   a word, and a quiet mono detail such as elapsed time. */
 .status { --tone: var(--dim); display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 9px 0 7px; border-radius: 7px; flex-shrink: 0;
   color: var(--tone); background: color-mix(in srgb, var(--tone) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 22%, transparent); white-space: nowrap; }
 .status.is-working, .status.is-done { --tone: var(--lime); }
 .status.is-ask { --tone: var(--amber); }
 .status.is-failed { --tone: var(--red); }
-.status-label { font: 500 13px/1 var(--pixel); letter-spacing: .01em; }
+.status-label { font: 600 12px/1 var(--sans); letter-spacing: -.05px; }
 .status-detail { font: 500 10.5px/1 var(--mono); color: var(--dim); font-variant-numeric: tabular-nums; }
 .status-detail:before { content: ''; display: inline-block; width: 1px; height: 10px; background: currentColor; opacity: .35; margin: 0 7px -1px 0; }
 .dot-glyph { display: block; }
@@ -184,7 +191,7 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .asked { align-self: flex-end; max-width: 80%; padding: 8px 13px; font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--raise-2); border-radius: 14px 14px 4px 14px; animation: kb-in 240ms cubic-bezier(.2,.8,.2,1) both; }
 .kibu-turn { display: flex; animation: kb-in 280ms 60ms cubic-bezier(.2,.8,.2,1) both; }
 .kibu-says { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 0 2px; }
-.says-head { display: flex; align-items: center; gap: 8px; font: 500 13px/1 var(--pixel); color: var(--lime); margin-bottom: -2px; }
+.says-head { display: flex; align-items: center; gap: 8px; font: 600 12.5px/1 var(--sans); color: var(--lime); margin-bottom: -2px; }
 .says-head { min-height: 24px; }
 .says-head > span:not(.status) { font: 500 10.5px/1 var(--mono); color: var(--faint); letter-spacing: .02em; }
 .says-head > span:not(.status):before { content: '·'; margin-right: 8px; }
@@ -210,7 +217,7 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .md ol { padding-left: 20px; }
 .md ol li { padding-left: 4px; }
 .md ol li::marker { font: 500 11px var(--mono); color: var(--faint); }
-/* "**Files** — find and sort": a two-column sheet instead of bullets. */
+/* "**Files**: find and sort": a two-column sheet instead of bullets. */
 .md ul.md-terms { gap: 0; border-top: 1px solid var(--hair); }
 .md ul.md-terms li { display: grid; grid-template-columns: 88px 1fr; column-gap: 20px; padding: 10px 0; border-bottom: 1px solid var(--hair); }
 .md ul.md-terms li:before { display: none; }
@@ -293,7 +300,7 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 /* Minimized: the island. The window itself morphs from panel to pill (main
    animates the bounds); in here the corners round off into a capsule, the
    panel's contents dissolve quickly, and the island's own contents arrive
-   just as the shape lands. Everything stays mounted — drafts, scroll and a
+   just as the shape lands. Everything stays mounted: drafts, scroll and a
    running task survive the round trip. */
 .kibu { transition: border-radius 340ms cubic-bezier(.65,0,.35,1), background 340ms, border-color 340ms, box-shadow 340ms; }
 .kibu>.bar, .kibu>.workspace, .kibu>.reply-dock, .kibu>.statusbar { transition: opacity 200ms ease 120ms, filter 200ms ease 120ms; }
@@ -310,7 +317,7 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .island:hover>svg { color: var(--fg); transform: scale(1.1); }
 .island:hover .island-face .kb-sprite { transform: scale(1.06); }
 .island-face .kb-sprite { transition: transform 200ms cubic-bezier(.3,1.4,.5,1); }
-/* A small live waveform while it works — the island's "something is happening". */
+/* A small live waveform while it works, the island's "something is happening". */
 .island-wave { display: flex; align-items: center; gap: 2px; height: 14px; }
 .island-wave i { width: 2px; height: 100%; border-radius: 1px; background: var(--lime); animation: kb-wave 900ms ease-in-out infinite; }
 .island-wave i:nth-child(2) { animation-delay: -700ms; } .island-wave i:nth-child(3) { animation-delay: -450ms; } .island-wave i:nth-child(4) { animation-delay: -200ms; }
@@ -326,16 +333,16 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
   position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); max-width: 244px; width: max-content;
   display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px;
   background: #101012f0; color: var(--fg); border: 1px solid #ffffff1f; border-radius: 6px;
-  font: 400 13px/1.3 var(--pixel); box-shadow: 3px 3px 0 #0007, inset 0 1px 0 #ffffff12;
+  font: var(--px-m); font-synthesis: none; font-variant-ligatures: none; -webkit-font-smoothing: none; box-shadow: 3px 3px 0 #0007, inset 0 1px 0 #ffffff12;
   animation: kb-bubble 220ms cubic-bezier(.3,1.3,.5,1) both;
 }
 .bubble:after { content: ''; position: absolute; bottom: -5px; left: 50%; width: 9px; height: 9px; margin-left: -4.5px; background: #101012; border: inherit; border-top: 0; border-left: 0; transform: rotate(45deg); }
-.bubble-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.bubble-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .bubble-pulse { width: 6px; height: 6px; background: var(--lime); border-radius: 50%; flex-shrink: 0; animation: kb-blip 1s infinite; }
 .bubble.is-chat { border-color: #ffffff2e; background: #16161af2; }
 .bubble.is-good { border-color: #d4ff3a4d; } .bubble.is-bad { border-color: #ff5a4e59; } .bubble.is-ask, .bubble.is-reminder { border-color: #ffb23e66; }
 .bubble.is-peek { border-color: #d4ff3a40; }
-.bubble-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.bubble-actions { display: flex; gap: 4px; flex-shrink: 0; -webkit-font-smoothing: antialiased; }
 .bubble-actions button { font: 700 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; padding: 6px 8px; border-radius: 5px; background: var(--lime); color: var(--lime-ink); }
 .bubble-actions button + button { background: var(--raise-2); color: var(--fg); box-shadow: none; }
 .drop-hint { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); white-space: nowrap; padding: 5px 9px; background: var(--lime); color: var(--lime-ink); border-radius: 6px; font: 700 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .14em; animation: kb-bubble 200ms both; }
@@ -447,9 +454,9 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .focus-screen { display: grid; place-items: center; min-width: 84px; height: 44px; padding: 0 10px; border-radius: 9px; flex-shrink: 0;
   background: repeating-linear-gradient(0deg, #ffffff06 0 1px, transparent 1px 3px), radial-gradient(120% 120% at 50% 40%, #121609, #050506); box-shadow: inset 0 0 0 1px #ffffff10, inset 0 2px 6px #000c; }
 .focus-copy { flex: 1; min-width: 0; display: grid; gap: 4px; }
-.focus-copy strong { font: 500 14px/1.3 var(--pixel); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-copy strong { font: 600 14px/1.3 var(--sans); letter-spacing: -.1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .focus-copy span { font-size: 11.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.focus-copy input { background: none; border: 0; border-radius: 0; padding: 0; font: 500 14px/1.3 var(--pixel); }
+.focus-copy input { background: none; border: 0; border-radius: 0; padding: 0; font: 600 14px/1.3 var(--sans); letter-spacing: -.1px; }
 .focus-copy input:focus-visible { outline: none; box-shadow: 0 1px 0 var(--lime); }
 .focus-presets { display: flex; align-items: center; gap: 4px; }
 .focus-presets button { height: 22px; min-width: 30px; padding: 0 7px; text-align: center; border-radius: 6px; font: 500 11px/1 var(--mono); color: var(--dim); background: var(--raise-2); }
@@ -496,7 +503,7 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .brain-group .rows-label span { color: var(--faint); opacity: .7; }
 .brain-group.is-overdue .rows-label { color: var(--amber); }
 /* A row: a glyph tile (or a checkbox) on the left, everything else lined up
-   with the title — the same shape as the rows on the home screen. */
+   with the title, the same shape as the rows on the home screen. */
 .brain-card { display: grid; grid-template-columns: 28px 1fr; column-gap: 12px; align-items: start; padding: 8px 10px; border-radius: 10px; animation: kb-in 220ms cubic-bezier(.2,.8,.2,1) both; }
 .brain-card + .brain-card { box-shadow: 0 -1px 0 var(--hair); border-top-left-radius: 0; border-top-right-radius: 0; }
 .brain-card:hover, .brain-card:focus-within { background: var(--hover); }
@@ -541,7 +548,7 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .starters button, .capture-actions button { font-size: 12px; font-weight: 500; border: 1px solid var(--hair-2); border-radius: 9px; padding: 6px 11px; }
 .starters button:hover, .capture-actions button:hover { background: var(--hover); border-color: #d4ff3a55; color: var(--lime); }
 .brain-empty .kb-sprite { margin-bottom: 4px; }
-.brain-empty strong { font: 500 16px/1.2 var(--pixel); }
+.brain-empty strong { font: 600 15px/1.3 var(--display); letter-spacing: -.2px; }
 .brain-empty p { font-size: 12px; color: var(--dim); }
 .brain-footnote { font: 500 10px var(--mono); text-align: center; color: var(--faint); padding-top: 6px; }
 
@@ -591,11 +598,11 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 
 /* ---------------------------------------------------------------- first run */
 /* Setup is the same panel, not a separate wizard: the bar names the step in
-   Kibu's own pixel voice, a row of lime dots counts the steps in the face's
+   Kibu's own voice, a row of lime dots counts the steps in the face's
    glyph language, and the status bar carries Back and Continue. */
 .is-onboarding .workspace { padding: 12px 14px 14px; }
 .welcome-title { flex: 1; min-width: 0; display: grid; gap: 6px; padding: 0 6px 0 2px; }
-.welcome-title strong { font: 500 18px/1.1 var(--pixel); color: var(--fg); letter-spacing: .01em; }
+.welcome-title strong { font: 600 18px/1.15 var(--display); color: var(--fg); letter-spacing: -.3px; }
 .welcome-title span { display: flex; align-items: center; font: 500 10.5px/1 var(--mono); color: var(--faint); white-space: nowrap; }
 .welcome-steps { display: flex; gap: 4px; list-style: none; margin: 0 6px 0 0; padding: 0; }
 .welcome-steps button { display: block; width: 6px; height: 6px; border-radius: 1.5px; background: #fff; opacity: .1; transition: opacity 200ms, background 200ms, box-shadow 200ms; }
@@ -643,7 +650,7 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .shortcut-key { display: inline-flex; align-items: center; min-height: 30px; padding: 2px 6px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--hair-2); }
 .shortcut-key:hover { box-shadow: inset 0 0 0 1px #d4ff3a4d; }
 .shortcut-key.is-recording { box-shadow: inset 0 0 0 1px var(--lime); background: var(--lime-soft); }
-.shortcut-listening { font: 500 13px/1 var(--pixel); color: var(--lime); padding: 0 4px; animation: kb-blip 1s ease-in-out infinite; }
+.shortcut-listening { font: 600 12.5px/1 var(--sans); color: var(--lime); padding: 0 4px; animation: kb-blip 1s ease-in-out infinite; }
 .welcome-example { display: flex; flex-direction: column; gap: 2px; }
 .welcome-example .rows-label { padding: 0 2px 6px; }
 .welcome-example .asked { align-self: flex-start; border-radius: 14px 14px 14px 4px; }

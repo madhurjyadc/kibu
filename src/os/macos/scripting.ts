@@ -278,7 +278,7 @@ export const SCRIPTS = {
 
   // Runs one of Kibu's fixed page programs in the active tab of the person's
   // browser. `program` is always one of the constants in your-browser.ts and
-  // `arg` is JSON-encoded data — neither is ever text from a model or a page.
+  // `arg` is JSON-encoded data; neither is ever text from a model or a page.
   pageRun: `
     const se = Application('System Events')
     const running = se.processes.whose({ backgroundOnly: false }).name()

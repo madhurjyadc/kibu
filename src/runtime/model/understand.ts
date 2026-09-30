@@ -3,13 +3,13 @@ import { choice, noul, type Jev } from './jev.js'
 /**
  * One structured reading of what the user asked for.
  *
- * Everything Kibu needs to decide — what kind of work this is, what sort of
- * thing it concerns, where, when, how big — in a single shape, produced once
+ * Everything Kibu needs to decide (what kind of work this is, what sort of
+ * thing it concerns, where, when, how big) in a single shape, produced once
  * per request.
  *
  * The reason this exists: understanding used to be a dozen regexes scattered
  * across routing, the find workflow and the command workflow. Every word that
- * was not in a list was a bug — "movie" matched and "movies" did not, "watch"
+ * was not in a list was a bug: "movie" matched and "movies" did not, "watch"
  * sat in the web list and hijacked every request about films. Lists of words
  * cannot be completed, only extended after each failure.
  *
@@ -17,7 +17,7 @@ import { choice, noul, type Jev } from './jev.js'
  * cannot write text, but it maps a messy sentence onto declared alternatives
  * in one round trip. So local rules now keep only the cases they are actually
  * certain about, and everything else is one Jev call that answers every
- * question at once — roughly 450ms, a fraction of a cent, and no vocabulary
+ * question at once, roughly 450ms, a fraction of a cent, and no vocabulary
  * to maintain.
  */
 
@@ -54,9 +54,9 @@ const ACTIONS: Record<Action, string> = {
 
 const KINDS: Record<Kind, string> = {
   any: 'No particular kind of file was implied.',
-  video: 'Films, movies, clips, recordings — anything you watch.',
+  video: 'Films, movies, clips, recordings, anything you watch.',
   image: 'Photos, pictures, screenshots, artwork.',
-  audio: 'Music, songs, recordings, podcasts — anything you listen to.',
+  audio: 'Music, songs, recordings, podcasts, anything you listen to.',
   document: 'Text documents, PDFs, notes, letters, reports.',
   spreadsheet: 'Spreadsheets, tables, CSVs, financial records.',
   slides: 'Presentations and slide decks.',
@@ -90,7 +90,7 @@ const PLACES: Record<Place, string> = {
 /**
  * Reads the request.
  *
- * Local rules answer only when they are genuinely certain — a dictated
+ * Local rules answer only when they are genuinely certain: a dictated
  * command, files dropped on the pet. Everything else goes to Jev, because a
  * confident regex is exactly how the old version got "movies" wrong.
  */
@@ -218,7 +218,7 @@ function firstMatch<T extends string>(words: Set<string>, table: Record<T, strin
  *
  * The bar is "certain", not "plausible". A clear action verb plus attributes
  * that map cleanly onto the vocabularies is answerable here for nothing; a
- * request with no recognisable verb — "any movies to watch?" — is exactly the
+ * request with no recognisable verb, "any movies to watch?", is exactly the
  * ambiguity Jev exists for, and is not guessed at.
  */
 function readLocally(request: string, hasDroppedPaths: boolean): Understanding | null {
@@ -309,8 +309,8 @@ const BLANK = {
 /**
  * When Jev is unavailable.
  *
- * Coarser than the confident path — it will guess an action where the
- * confident path refuses to — but it reads the same vocabularies rather than
+ * Coarser than the confident path (it will guess an action where the
+ * confident path refuses to), but it reads the same vocabularies rather than
  * keeping a second set of words that drift apart from the first. Two lists
  * meaning the same thing is how "storage" counted as a size in one place and
  * not in the other.

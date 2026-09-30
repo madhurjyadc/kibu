@@ -249,7 +249,7 @@ export function Pet(): React.JSX.Element {
     }
   }, [])
 
-  // Doze off when nothing has happened for a while — with a yawn first.
+  // Doze off when nothing has happened for a while, with a yawn first.
   useEffect(() => {
     const id = setInterval(() => {
       if (state === 'idle' && !hovered && !asleepRef.current && Date.now() - lastPoke.current > SLEEP_AFTER_MS) {
@@ -398,7 +398,7 @@ export function Pet(): React.JSX.Element {
 
   function onMouseMove(e: React.MouseEvent): void {
     updateHover(e.clientX, e.clientY)
-    // The button came up somewhere this window never heard about — a fast
+    // The button came up somewhere this window never heard about: a fast
     // drag easily leaves the little window behind. Finish the drag now, or
     // Kibu stays dizzy and keeps swallowing clicks on that patch of screen.
     if (dragRef.current && (e.buttons & 1) === 0) { endDrag(); return }
@@ -506,7 +506,7 @@ export function Pet(): React.JSX.Element {
   const done = task && TERMINAL.includes(task.status)
   const tone = chat && !undoNote ? 'is-chat' : !done ? (task?.status === 'awaiting_user' ? 'is-ask' : '') : task.status === 'failed' ? 'is-bad' : task.status === 'succeeded' ? 'is-good' : ''
   const canUndo = !!(done && task.summary?.undoable)
-  const alert = task?.status === 'awaiting_user' ? null : timer?.status === 'ringing' ? `Time’s up — ${timer.label}.` : due ? due.title : null
+  const alert = task?.status === 'awaiting_user' ? null : timer?.status === 'ringing' ? `Time’s up: ${timer.label}.` : due ? due.title : null
   // Hovering the TV says what the time is for, without opening anything.
   const peek = hovered && timer && timer.status !== 'ringing' ? `${timer.label} · ${timer.status === 'paused' ? 'paused' : `${clockText(timerRemaining(timer, now))} left`}` : null
   const text = alertError ?? alert ?? peek ?? undoNote ?? chat?.text ?? bubble

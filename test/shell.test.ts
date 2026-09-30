@@ -22,7 +22,7 @@ test('a full path to a banned program is still banned', () => {
 
 test('shell metacharacters are inert, because there is no shell', () => {
   // These are accepted only as literal argv entries. With execFile and
-  // shell:false they reach the program as text — `;` does not start a new
+  // shell:false they reach the program as text: `;` does not start a new
   // command and `|` pipes nothing.
   const vetted = vetCommand('echo', ['hello; rm -rf ~', '|', '$(whoami)', '`id`'])
   assert.deepEqual(vetted.args, ['hello; rm -rf ~', '|', '$(whoami)', '`id`'])

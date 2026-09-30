@@ -22,7 +22,7 @@ export function Steps({ task, logs }: { task: TaskState | null; logs: LogEntry[]
               <span className="tool">{a.tool}</span>
               {a.verification && <span className={a.verification.verified ? 'dim' : 'bad'}>{a.verification.detail}</span>}
               {a.error && <span className="bad">{a.error}</span>}
-              {a.outcome === 'uncertain' && <span className="warn">couldn’t confirm this one — I’ll check before repeating it</span>}
+              {a.outcome === 'uncertain' && <span className="warn">couldn’t confirm this one, so I’ll check before repeating it</span>}
             </span>
             <span className="dim dur">{a.finishedAt ? `${((a.finishedAt - a.startedAt) / 1000).toFixed(1)}s` : ''}</span>
           </li>

@@ -333,7 +333,7 @@ try {
     window.__test.state.brain.timer.endsAt = Date.now() - 1000
     window.__test.emit('brain', structuredClone(window.__test.state.brain))
   })
-  await page.getByText('Time’s up — Focus time.').waitFor()
+  await page.getByText('Time’s up: Focus time.').waitFor()
   await page.screenshot({ path: `${artifacts}/pet-timer-due.png` })
   await page.getByRole('button', { name: 'Done', exact: true }).click()
   await page.waitForFunction(() => !document.querySelector('.kb-sprite.is-timer'))

@@ -1,4 +1,4 @@
-// KibuHelper — macOS integration helper for Kibu.
+// KibuHelper: macOS integration helper for Kibu.
 //
 // Speaks newline-delimited JSON on stdin/stdout. One request per line, one
 // response per line, correlated by `id`. It is deliberately dumb: it exposes

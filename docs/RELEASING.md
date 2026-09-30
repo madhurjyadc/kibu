@@ -77,11 +77,11 @@ That copy is unsigned: fine on the Mac that built it, not something to share.
 
 ## What is in the bundle
 
-- `electron-builder.yml` — the packaging configuration.
-- `build/icon.icns` — the app icon, made from Kibu's idle sprite with
+- `electron-builder.yml`: the packaging configuration.
+- `build/icon.icns`: the app icon, made from Kibu's idle sprite with
   `npm run app-icon`.
-- `build/entitlements.mac.plist` — the hardened-runtime exceptions Electron
+- `build/entitlements.mac.plist`: the hardened-runtime exceptions Electron
   needs, plus Apple Events for scripting Calendar, Reminders, Notes, Mail,
   Finder and browsers.
-- `resources/bin/kibu-helper` — the Swift helper, built for Apple silicon only.
+- `resources/bin/kibu-helper`: the Swift helper, built for Apple silicon only.
   Intel Macs are not supported; `LSMinimumSystemVersion` is 14.0.

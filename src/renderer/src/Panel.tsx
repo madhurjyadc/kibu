@@ -172,8 +172,8 @@ export function Panel(): React.JSX.Element {
   }, [task])
 
   /**
-   * Sends a message. `followUp` is the turn it replies to — the reply box
-   * passes the chat's latest turn — or null to start a new chat.
+   * Sends a message. `followUp` is the turn it replies to (the reply box
+   * passes the chat's latest turn), or null to start a new chat.
    */
   const send = useCallback(async (text: string, withFront: boolean, followUp: string | null) => {
     if (sending.current) return
@@ -419,7 +419,7 @@ export function Panel(): React.JSX.Element {
           <button className={`icon-button ${view === 'tune' ? 'selected' : ''}`} aria-label="Settings" title={hasKey === false ? 'Settings · connect a model for app and browser tasks' : 'Settings'} onClick={() => setView('tune')}><Icon name="settings" size={16} />{hasKey === false && <i className="connection-dot" />}</button>
           <button className="icon-button" aria-label="Help" title="Help" onClick={() => setView('help')}><Icon name="help" size={16} /></button>
           <span className="nav-rule" />
-          <button className={`icon-button ${panel.pinned ? 'selected' : ''}`} aria-label="Keep in front" aria-pressed={panel.pinned} title={panel.pinned ? 'Keep in front: on — Kibu stays open when you click elsewhere' : 'Keep in front: off — Kibu tucks away when you click elsewhere'} onClick={() => void window.kibu.pinPanel(!panel.pinned)}><Icon name="pin" size={16} /></button>
+          <button className={`icon-button ${panel.pinned ? 'selected' : ''}`} aria-label="Keep in front" aria-pressed={panel.pinned} title={panel.pinned ? 'Keep in front: on. Kibu stays open when you click elsewhere' : 'Keep in front: off. Kibu tucks away when you click elsewhere'} onClick={() => void window.kibu.pinPanel(!panel.pinned)}><Icon name="pin" size={16} /></button>
           <button className="icon-button" aria-label="Minimize to island" title="Minimize to the island" onClick={() => void window.kibu.minimizePanel()}><Icon name="minimize" size={16} /></button>
           <button className="icon-button" aria-label="Hide Kibu" title="Hide (Esc)" onClick={() => void window.kibu.closePanel()}><Icon name="close" size={16} /></button>
         </nav>

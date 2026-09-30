@@ -4,7 +4,7 @@ import { SetupList, useSetup } from './Setup.js'
 import { ShortcutKey } from './ShortcutKey.js'
 
 /**
- * Keys, habits and permissions — the only settings there are, written as
+ * Keys, habits and permissions: the only settings there are, written as
  * things Kibu is or isn't allowed to do rather than as a preferences screen.
  * `only="keys"` is what /keys shows.
  */
@@ -72,7 +72,7 @@ export function Tune({ only, onKeyChange, onSetup }: { only?: 'keys'; onKeyChang
         {apps.some((a) => a.available) && <>
           <label className="habit"><span>Plan with a coding app on this Mac</span><input type="checkbox" checked={settings.useClaudeCode} onChange={(e) => void update({ useClaudeCode: e.target.checked })} /></label>
           {settings.useClaudeCode && <label className="row"><span>Coding app</span><select aria-label="Coding app" value={settings.codingApp} onChange={(e) => void update({ codingApp: e.target.value as Settings['codingApp'] })}>
-            {apps.map((a) => <option key={a.id} value={a.id} disabled={!a.available}>{a.label}{a.available ? '' : ' — not installed'}</option>)}
+            {apps.map((a) => <option key={a.id} value={a.id} disabled={!a.available}>{a.label}{a.available ? '' : ' (not installed)'}</option>)}
           </select></label>}
           {settings.useClaudeCode && settings.codingApp !== 'claude-code' && <label className="row"><span>Model</span><input key={settings.codingApp} aria-label="Coding app model"
             placeholder={settings.codingApp === 'opencode' ? 'provider/model, or its default' : 'Its own default'}
@@ -153,7 +153,7 @@ function MemorySection({ settings, update, onError }: { settings: Settings; upda
       <label className="habit"><span>Remember things about me</span><input type="checkbox" checked={settings.memoryEnabled} onChange={(e) => void update({ memoryEnabled: e.target.checked })} /></label>
       <label className="habit"><span>Learn from what I do</span><input type="checkbox" disabled={!settings.memoryEnabled} checked={settings.memoryEnabled && settings.memoryLearn} onChange={(e) => void update({ memoryLearn: e.target.checked })} /></label>
       {memories.length === 0 ? (
-        <p className="dim">Nothing yet. Say “remember that …”, or just use Kibu — it picks up the choices you repeat. It only brings a memory up when it helps with what you asked.</p>
+        <p className="dim">Nothing yet. Say “remember that …”, or just use Kibu: it picks up the choices you repeat. It only brings a memory up when it helps with what you asked.</p>
       ) : (
         <>
           {group('You told me', told)}

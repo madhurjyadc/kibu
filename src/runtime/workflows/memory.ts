@@ -5,7 +5,7 @@ import type { Workflow, WorkflowResult } from './types.js'
 
 /**
  * "Remember that my manager is Priya", "forget that", "what do you remember
- * about me" — handled in code, instantly, with no planning model. The person
+ * about me": handled in code, instantly, with no planning model. The person
  * should never need a settings screen to know or change what Kibu keeps.
  */
 
@@ -30,7 +30,7 @@ export const memoryWorkflow: Workflow = {
 
     if (FORGET_ALL.test(request)) {
       const all = mem.all()
-      if (all.length === 0) return { success: true, headline: "There's nothing to forget — I don't remember anything yet.", evidence: [] }
+      if (all.length === 0) return { success: true, headline: "There's nothing to forget. I don't remember anything yet.", evidence: [] }
       const answer = await ctx.askUser({
         reason: 'authorization',
         prompt: `Forget all ${all.length} things I remember about you? This can't be undone.`,
@@ -65,7 +65,7 @@ export const memoryWorkflow: Workflow = {
     const told = explicitMemory(request)
     if (told) {
       const secret = looksSecret(told.text)
-      if (secret) return { success: false, headline: `I don't keep ${secret}, even when asked — they're safer in your password manager.`, evidence: [] }
+      if (secret) return { success: false, headline: `I don't keep ${secret}, even when asked. They're safer in your password manager.`, evidence: [] }
       const kept = mem.keep(makeMemory(told.text, told.kind, 'told'))
       if (!kept) return { success: false, headline: "I couldn't keep that one.", evidence: [] }
       return { success: true, headline: `Got it. I'll remember that.`, evidence: [{ kind: 'text', label: 'Remembered', value: kept.text }] }

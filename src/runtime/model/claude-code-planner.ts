@@ -8,8 +8,8 @@ export { parseProposal } from './cli-planner.js'
 
 /**
  * Planning through the Claude Code CLI on this Mac (`claude -p`), with every
- * Claude Code tool denied, so it can only answer. The shared behaviour — the
- * reply contract, the transcript, parsing — lives in CliPlanner; this is the
+ * Claude Code tool denied, so it can only answer. The shared behaviour (the
+ * reply contract, the transcript, parsing) lives in CliPlanner; this is the
  * transport, plus the two things only Claude Code offers: a process that
  * stays open for the whole task, and a quick model for plain answers.
  *
@@ -166,8 +166,8 @@ function cliEnv(model: string): NodeJS.ProcessEnv {
 }
 
 /*
- * One process started ahead of time. Starting the CLI costs about two seconds
- * — more than a short answer takes — so the next task's process is started
+ * One process started ahead of time. Starting the CLI costs about two seconds,
+ * more than a short answer takes, so the next task's process is started
  * while the person is still reading the last answer, and sits waiting on stdin.
  */
 const warm = new Map<string, StreamSession>()
@@ -288,7 +288,7 @@ export function resolveBin(): string {
   return resolveBinary('claude', 'KIBU_CLAUDE_BIN', 'Claude Code', [join(process.env.HOME ?? '', '.claude/local/claude')])
 }
 
-/** True when the CLI is present — used to offer the option only when it works. */
+/** True when the CLI is present, used to offer the option only when it works. */
 export function claudeCodeAvailable(): boolean {
   try {
     resolveBin()
