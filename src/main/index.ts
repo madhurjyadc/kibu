@@ -634,6 +634,7 @@ function createTray(): void {
         }
       },
       { type: 'separator' },
+      { label: 'Uninstall Kibu…', click: () => { showPanel(); void uninstaller.uninstall().catch((err: unknown) => { void dialog.showMessageBox(panelWindow!, { type: 'error', message: 'Couldn’t uninstall Kibu', detail: err instanceof Error ? err.message : String(err) }) }) } },
       { label: 'Quit Kibu', click: () => app.quit() }
     ])
   tray.on('click', () => togglePanel(true))
@@ -1022,6 +1023,8 @@ if (!singleInstance) {
     brain = new BrainStore(app.getPath('userData'))
     secrets = new Secrets(store)
     settings = loadSettings()
+    // Persist migrations so an older preference cannot reappear after an update.
+    saveSettings({})
     uninstaller = new AppUninstaller({
       executable: () => app.getPath('exe'),
       packaged: () => app.isPackaged && process.platform === 'darwin',
@@ -1191,17 +1194,22 @@ if (!singleInstance) {
   // Providing this handler and doing nothing is what keeps the app alive.
   app.on('window-all-closed', () => {})
 
-  app.on('will-quit', async (event) => {
+  // before-quit runs before Electron closes windows. Waiting until will-quit
+  // left the panel's close handler cancelling every quit (and uninstall).
+  app.on('before-quit', async (event) => {
     event.preventDefault()
+    if (quitting) return
     quitting = true
     if (runtimeIdleTimer) clearTimeout(runtimeIdleTimer)
     globalShortcut.unregisterAll()
     desktopSession?.dispose()
-    await runtime?.stop()
-    if (brainClock) clearInterval(brainClock)
-    brain?.close()
-    store?.close()
-    app.exit(0)
+    try {
+      await runtime?.stop()
+    } finally {
+      if (brainClock) clearInterval(brainClock)
+      try { brain?.close(); store?.close() }
+      finally { app.exit(0) }
+    }
   })
 }
 

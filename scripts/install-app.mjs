@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process'
 import { accessSync, constants, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 
 const root = new URL('..', import.meta.url).pathname
 const run = (cmd, args, env = {}) => execFileSync(cmd, args, { cwd: root, stdio: 'inherit', env: { ...process.env, ...env } })
@@ -37,7 +38,29 @@ let apps = '/Applications'
 try { accessSync(apps, constants.W_OK) } catch { apps = join(homedir(), 'Applications'); mkdirSync(apps, { recursive: true }) }
 const target = join(apps, 'Kibu.app')
 
-try { execFileSync('osascript', ['-e', 'tell application id "app.kibu.desktop" to quit'], { stdio: 'ignore' }) } catch { /* not running */ }
+// Older builds swallowed Quit in their window-close handler. Do not replace
+// their files while that process still owns the shortcut and loaded old code.
+const executable = join(target, 'Contents', 'MacOS', 'Kibu')
+const running = () => execFileSync('ps', ['-axo', 'pid=,comm='], { encoding: 'utf8' })
+  .split('\n').flatMap((line) => {
+    const match = line.trim().match(/^(\d+)\s+(.+)$/)
+    return match?.[2] === executable ? [Number(match[1])] : []
+  })
+if (running().length) {
+  try { execFileSync('osascript', ['-e', `tell application ${JSON.stringify(target)} to quit`], { stdio: 'ignore', timeout: 5000 }) } catch { /* old build may refuse */ }
+  for (let attempt = 0; running().length && attempt < 40; attempt++) await delay(100)
+  for (const pid of running()) {
+    try { process.kill(pid, 'SIGTERM') } catch (err) { if (err.code !== 'ESRCH') throw err }
+  }
+  for (let attempt = 0; running().length && attempt < 40; attempt++) await delay(100)
+  // Electron turns SIGTERM into Quit too, so the broken close handler can
+  // swallow that as well. Limit the last resort to this installed executable.
+  for (const pid of running()) {
+    try { process.kill(pid, 'SIGKILL') } catch (err) { if (err.code !== 'ESRCH') throw err }
+  }
+  for (let attempt = 0; running().length && attempt < 40; attempt++) await delay(100)
+  if (running().length) throw new Error('Kibu could not stop. Quit it in Activity Monitor, then run npm run app again.')
+}
 if (existsSync(target)) {
   console.log(`Replacing ${target}`)
   rmSync(target, { recursive: true, force: true })
