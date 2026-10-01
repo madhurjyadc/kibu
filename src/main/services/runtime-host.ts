@@ -22,14 +22,16 @@ export interface RuntimeHostOptions {
 export class RuntimeHost extends EventEmitter {
   private child: ChildProcess | null = null
   private ready = false
+  private stopping: Promise<void> | null = null
+  private expectedExits = new WeakSet<ChildProcess>()
 
   constructor(private readonly options: RuntimeHostOptions) {
     super()
   }
 
   start(): void {
-    if (this.child) return
-    this.child = fork(this.options.entry, [], {
+    if (this.child || this.stopping) return
+    const child = fork(this.options.entry, [], {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
       env: {
         ...process.env,
@@ -41,8 +43,10 @@ export class RuntimeHost extends EventEmitter {
         NODE_NO_WARNINGS: '1'
       }
     })
+    this.child = child
 
-    this.child.on('message', (msg: RuntimeToHost) => {
+    child.on('message', (msg: RuntimeToHost) => {
+      if (this.child !== child) return
       if (msg.type === 'ready') {
         this.ready = true
         this.emit('ready')
@@ -51,25 +55,49 @@ export class RuntimeHost extends EventEmitter {
       this.emit('message', msg)
     })
 
-    this.child.stdout?.on('data', (d: Buffer) => this.emit('stdout', d.toString()))
-    this.child.stderr?.on('data', (d: Buffer) => this.emit('stderr', d.toString()))
+    child.stdout?.on('data', (d: Buffer) => this.emit('stdout', d.toString()))
+    child.stderr?.on('data', (d: Buffer) => this.emit('stderr', d.toString()))
 
     // A spawn failure arrives here, not as an exit. Without this listener Node
     // would throw an unhandled 'error' event and take the app down.
-    this.child.on('error', (err) => {
+    child.on('error', (err) => {
       this.ready = false
       this.emit('spawn-error', err)
     })
 
-    this.child.on('exit', (code, signal) => {
-      this.ready = false
-      this.child = null
-      this.emit('exit', { code, signal })
+    child.on('exit', (code, signal) => {
+      if (this.child === child) {
+        this.ready = false
+        this.child = null
+      }
+      this.emit('exit', { code, signal, expected: this.expectedExits.has(child) })
     })
   }
 
   get isReady(): boolean {
     return this.ready
+  }
+
+  /** Start only when needed, and wait for IPC before accepting the first task. */
+  async ensureReady(): Promise<void> {
+    if (this.stopping) await this.stopping
+    if (this.ready) return
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = (): void => {
+        clearTimeout(timer)
+        this.off('ready', onReady)
+        this.off('spawn-error', onError)
+        this.off('exit', onExit)
+      }
+      const onReady = (): void => { cleanup(); resolve() }
+      const onError = (err: Error): void => { cleanup(); reject(err) }
+      const onExit = (): void => onError(new Error('The task runtime exited before it was ready.'))
+      const timer = setTimeout(() => onError(new Error('The task runtime took too long to start.')), 15_000)
+      this.once('ready', onReady)
+      this.once('spawn-error', onError)
+      this.once('exit', onExit)
+      try { this.start() } catch (err) { onError(err instanceof Error ? err : new Error(String(err))) }
+    })
   }
 
   send(msg: HostToRuntime): boolean {
@@ -79,27 +107,30 @@ export class RuntimeHost extends EventEmitter {
 
   /** Kills and respawns. Used after a runtime crash. */
   restart(): void {
-    this.child?.kill('SIGKILL')
-    this.child = null
-    this.ready = false
-    this.start()
+    void this.stop().then(() => this.start())
   }
 
-  async stop(): Promise<void> {
-    if (!this.child) return
-    this.send({ type: 'shutdown' })
+  stop(): Promise<void> {
+    if (this.stopping) return this.stopping
+    if (!this.child) return Promise.resolve()
     const child = this.child
-    await new Promise<void>((resolve) => {
+    this.expectedExits.add(child)
+    this.stopping = new Promise<void>((resolve) => {
+      const finish = (): void => {
+        clearTimeout(timer)
+        child.off('exit', finish)
+        child.off('close', finish)
+        if (this.child === child) { this.child = null; this.ready = false }
+        resolve()
+      }
       const timer = setTimeout(() => {
         child.kill('SIGKILL')
-        resolve()
+        finish()
       }, 3000)
-      child.once('exit', () => {
-        clearTimeout(timer)
-        resolve()
-      })
-    })
-    this.child = null
-    this.ready = false
+      child.once('exit', finish)
+      child.once('close', finish)
+      if (!this.ready || !this.send({ type: 'shutdown' })) child.kill('SIGKILL')
+    }).finally(() => { this.stopping = null })
+    return this.stopping
   }
 }

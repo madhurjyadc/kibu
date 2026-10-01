@@ -97,7 +97,8 @@ export function Tune({ only, onKeyChange, onSetup }: { only?: 'keys'; onKeyChang
           <label className="habit"><span>Confirm every action</span><input type="checkbox" checked={settings.confirmEveryAction} onChange={(e) => void update({ confirmEveryAction: e.target.checked })} /></label>
           <label className="row"><span>Budget / task ($)</span><input type="number" min={0.1} step={0.25} defaultValue={settings.maxUsdPerTask} onBlur={(e) => { const value = Number(e.target.value); if (Number.isFinite(value) && value >= 0.1) void update({ maxUsdPerTask: value }); else e.target.value = String(settings.maxUsdPerTask) }} /></label>
           <div className="row"><span>Open Kibu</span><ShortcutKey value={settings.shortcut} onChange={(shortcut) => void update({ shortcut })} /></div>
-          <label className="row"><span>The pet</span><select aria-label="Where the pet lives" value={settings.petMode ?? 'desktop'} onChange={(e) => void update({ petMode: e.target.value as Settings['petMode'] })}>
+          <label className="row"><span>The pet</span><select aria-label="Where the pet lives" value={settings.petMode ?? 'ondemand'} onChange={(e) => void update({ petMode: e.target.value as Settings['petMode'] })}>
+            <option value="ondemand">When called, working, or reminding me</option>
             <option value="desktop">Always on the desktop</option>
             <option value="peek">Only while working (peeks from the corner)</option>
             <option value="menubar">Menu bar only</option>

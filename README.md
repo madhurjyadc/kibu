@@ -17,22 +17,29 @@ The short version, with a demo you can try in the browser, is at
 
 ## Installing it
 
-You need an Apple silicon Mac (M1 or later) on macOS 14+, [Node.js](https://nodejs.org) 22 or later, and Apple's
+You need an Apple silicon Mac (M1 or later) on macOS 14+, [Node.js](https://nodejs.org) 22.12 or later, and Apple's
 command line tools (`xcode-select --install`). Then:
 
 ```bash
-git clone https://github.com/madhurjyadc/kibu.git && cd kibu && npm install && npm run app
+git clone https://github.com/madhurjyadc/kibu.git && cd kibu && npm install && npx install-electron --no && npm run app
 ```
+
+`npm install` also downloads the Electron executable. The first Swift helper
+build can take a few minutes without printing progress; let it finish.
 
 That builds **Kibu.app** on your Mac, puts it in Applications and opens it.
 Press **⌥Space** from anywhere, or click Kibu's face in the menu bar. An app
 you build yourself opens without any Apple warning; because it is signed only
 for this build, macOS may ask for its permissions again after you update.
 
-To update: `git pull && npm install && npm run app`.
+To update: `git pull && npm install && npx install-electron --no && npm run app`.
 
 For development with hot reload, use `npm run dev` instead (macOS will call it
 "Electron" in its permission dialogs).
+
+If startup reports `Error: Electron uninstall`, run `npx install-electron --no`
+in the repo, then retry your command. This also repairs an older checkout or an
+install made with npm scripts disabled.
 
 ### What Kibu thinks with
 
@@ -79,17 +86,26 @@ System Settings.
 
 ## Where the pet lives
 
-The pet lives on your desktop: drag it anywhere, drop files on it, right-click
-it to dance or nap. If it is ever in the way, Settings → *The pet* has two
-quieter options: **only while working** (it stays tucked away and peeks up from
-the bottom-right corner while it works, needs an answer, runs a timer or has a
-reminder due; rest the pointer on the right edge near the bottom to call it)
-and **menu bar only** (status next to the menu bar face, results as
-notifications).
+By default, Kibu stays out of sight. Press **⌥Space** to bring up the pet and
+prompt together. Close the prompt to put both away; the pet stays visible while
+work is running or waiting for your answer, briefly shows the result, and comes
+back when a reminder or timer is due. A running countdown alone does not keep
+the pet on screen.
+
+The background host keeps the shortcut and reminder clock available. When the
+workspace is closed and no task is running, the task runtime shuts down and
+hidden windows throttle their rendering. **Quit Kibu** in the menu bar stops
+it completely, including its shortcut and reminders. Settings → **Open Kibu at
+login for reminders** starts the host again when you log in.
+
+Settings → **The pet** also offers **always on the desktop**, **only while
+working** (with the right-edge hover shortcut), and **menu bar only**. An
+explicitly chosen mode is preserved across updates. While visible, drag the pet
+anywhere, drop files on it, or right-click it to dance or nap.
 
 ## Using it
 
-Kibu sits on your desktop. Click it, press **⌥Space**, or click its face in the menu bar to open its companion
+Press **⌥Space** or click Kibu’s face in the menu bar to open the pet and companion
 workspace. The minimal home has one input and Find, Organize, and Rename actions.
 The clock opens History; the sliders open Settings.
 

@@ -1,5 +1,6 @@
 /**
  * Where the pet lives.
+ *   ondemand: with the open prompt, during work, or for a due reminder.
  *   peek:    out of sight until there is something to see: it slides up
  *             while Kibu works, needs an answer or runs a timer, stays a few
  *             seconds to show how things went, and comes when called by
@@ -7,7 +8,7 @@
  *   menubar: never on the desktop; the menu bar face and notifications.
  *   desktop: always on the desktop, wherever it was put.
  */
-export type PetMode = 'peek' | 'menubar' | 'desktop'
+export type PetMode = 'ondemand' | 'peek' | 'menubar' | 'desktop'
 
 /** How long the pet stays to show how a task went. */
 const LINGER_MS = 6000
@@ -42,6 +43,7 @@ export interface PresenceDeps {
 export class PetPresence {
   private busy = false
   private attention = false
+  private panelOpen = false
   private lingerUntil = 0
   private calledUntil = 0
   private edgeSince = 0
@@ -66,6 +68,16 @@ export class PetPresence {
   setAttention(value: boolean): void {
     if (value === this.attention) return
     this.attention = value
+    this.update()
+  }
+
+  /** Closing the prompt dismisses any completed result or explicit pet call. */
+  setPanelOpen(value: boolean): void {
+    this.panelOpen = value
+    if (!value && this.deps.mode() === 'ondemand') {
+      this.lingerUntil = 0
+      this.calledUntil = 0
+    }
     this.update()
   }
 
@@ -99,7 +111,7 @@ export class PetPresence {
     if (mode === 'desktop') return true
     if (mode === 'menubar') return false
     const now = this.now()
-    return this.busy || this.attention || this.deps.held() || now < this.lingerUntil || now < this.calledUntil
+    return this.busy || this.attention || (mode === 'ondemand' && this.panelOpen) || this.deps.held() || now < this.lingerUntil || now < this.calledUntil
   }
 
   update(): void {

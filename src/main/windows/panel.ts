@@ -88,14 +88,13 @@ export function createPanelWindow(deps: PanelWindowDeps, placement: PanelPlaceme
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // A hidden panel keeps rendering, so it is already up to date (right
-      // size, latest task) the moment it is shown, instead of flashing an old
-      // frame and then catching up.
-      backgroundThrottling: false
+      backgroundThrottling: true
     }
   })
 
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  win.on('show', () => win.webContents.setBackgroundThrottling(false))
+  win.on('hide', () => win.webContents.setBackgroundThrottling(true))
   setPanelPinned(win, placement.pinned)
   if (placement.x >= 0 && placement.y >= 0) {
     const bounds = win.getBounds()

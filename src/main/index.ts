@@ -75,6 +75,19 @@ let osAdapter: ReturnType<typeof createOsAdapter>
 let setup: Setup
 /** Set during shutdown so the runtime's exit is not reported as a crash. */
 let quitting = false
+let runtimeIdleTimer: ReturnType<typeof setTimeout> | null = null
+let measuring = false
+
+/** Keep only the shortcut/reminder host alive after the workspace is put away. */
+function restRuntime(): void {
+  if (runtimeIdleTimer) clearTimeout(runtimeIdleTimer)
+  runtimeIdleTimer = null
+  if (quitting || measuring || panelWindow?.isVisible() || (currentTask && !isTerminal(currentTask.status))) return
+  runtimeIdleTimer = setTimeout(() => {
+    runtimeIdleTimer = null
+    if (!quitting && !measuring && !panelWindow?.isVisible() && (!currentTask || isTerminal(currentTask.status))) void runtime.stop()
+  }, 1000)
+}
 /**
  * The window the user was in just before Kibu's panel took focus. Captured
  * eagerly because once the panel is open, the frontmost app is Kibu.
@@ -118,7 +131,7 @@ function loadSettings(): Settings {
   try {
     const saved = JSON.parse(raw) as Partial<Settings>
     if (saved.shortcut === OLD_DEFAULT_SHORTCUT) delete saved.shortcut
-    // "peek" was briefly the default; a pet nobody chose to hide belongs on the desktop.
+    // Apply the current default unless the person explicitly chose a mode.
     if (!saved.petModeChosen) delete saved.petMode
     return { ...DEFAULT_SETTINGS, ...saved }
   } catch {
@@ -140,7 +153,7 @@ function broadcast(channel: string, payload: unknown): void {
   // A running timer or a due reminder is shown on the pet, so it comes out for them.
   if (channel === IPC.onBrain) {
     const state = payload as BrainSnapshot
-    petPresence.setAttention(!!state.timer || dueItems(state).length > 0)
+    petPresence.setAttention((settings.petMode === 'ondemand' ? state.timer?.status === 'ringing' : !!state.timer) || dueItems(state).length > 0)
   }
   for (const win of [petWindow, panelWindow]) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -157,6 +170,7 @@ function followCursor(): void {
   let last = ''
   const timer = setInterval(() => {
     if (!petWindow || petWindow.isDestroyed()) return clearInterval(timer)
+    if (!petWindow.isVisible() && settings.petMode !== 'peek') return
     const at = screen.getCursorScreenPoint()
     // Resting the pointer at the screen's right edge calls a tucked-away pet.
     petPresence.sample(at)
@@ -281,11 +295,12 @@ function previousTurn(followUp: string | null | undefined): PreviousTurn | null 
   }
 }
 
-function startTask(req: StartTaskRequest): TaskState {
+async function startTask(req: StartTaskRequest): Promise<TaskState> {
   // A missing Anthropic key is no longer fatal: the Jev-only workflows can
   // still run, Claude Code can stand in for the planner, and the runtime
   // reports clearly if a request needs something that is not configured.
   const planViaClaudeCode = settings.useClaudeCode && codingAppAvailable(settings.codingApp)
+  if (measuring) throw new Error('Wait for the measurement to finish before starting a task.')
   if (currentTask && !isTerminal(currentTask.status)) throw new Error('A task is already running.')
 
   const task = newTask(req)
@@ -297,28 +312,38 @@ function startTask(req: StartTaskRequest): TaskState {
   ;(task as TaskState & { droppedPaths?: string[] }).droppedPaths = (req.droppedPaths ?? []).map(normalizePath)
   currentTask = task
   store.saveTask(task)
+  setPetState('thinking')
 
-  const sent = runtime.send({
-    type: 'start',
-    task,
-    apiKey: secrets.getApiKey(),
-    jevApiKey: secrets.getJevKey(),
-    model: { ...DEFAULT_MODEL_CONFIG, claudeCode: settings.claudeCodeModel, codex: settings.codexModel, opencode: settings.opencodeModel },
-    frontWindow: req.includeFrontWindow ? lastFrontWindow : null,
-    previousApp: lastFrontWindow?.name ?? null,
-    memories: settings.memoryEnabled ? store.listMemories() : [],
-    memory: { enabled: settings.memoryEnabled, learn: settings.memoryEnabled && settings.memoryLearn },
-    confirmEveryAction: settings.confirmEveryAction,
-    workflowsEnabled: settings.workflowsFirst,
-    useClaudeCode: planViaClaudeCode,
-    codingApp: settings.codingApp,
-    previousTurn: previous
-  })
+  let sent = false
+  try {
+    await runtime.ensureReady()
+    if (isTerminal(task.status)) { restRuntime(); return task }
+    sent = runtime.send({
+      type: 'start',
+      task,
+      apiKey: secrets.getApiKey(),
+      jevApiKey: secrets.getJevKey(),
+      model: { ...DEFAULT_MODEL_CONFIG, claudeCode: settings.claudeCodeModel, codex: settings.codexModel, opencode: settings.opencodeModel },
+      frontWindow: req.includeFrontWindow ? lastFrontWindow : null,
+      previousApp: lastFrontWindow?.name ?? null,
+      memories: settings.memoryEnabled ? store.listMemories() : [],
+      memory: { enabled: settings.memoryEnabled, learn: settings.memoryEnabled && settings.memoryLearn },
+      confirmEveryAction: settings.confirmEveryAction,
+      workflowsEnabled: settings.workflowsFirst,
+      useClaudeCode: planViaClaudeCode,
+      codingApp: settings.codingApp,
+      previousTurn: previous
+    })
+  } catch (err) {
+    task.error = err instanceof Error ? err.message : String(err)
+  }
   if (!sent) {
     task.status = 'failed'
-    task.summary = { headline: 'The task runtime is not running. Try again in a moment.', evidence: [], undoable: false }
+    task.summary = { headline: task.error ?? 'The task runtime could not start. Try again.', evidence: [], undoable: false }
     store.saveTask(task)
     broadcast(IPC.onTaskUpdate, task)
+    setPetState('failed')
+    restRuntime()
   }
   return task
 }
@@ -334,6 +359,7 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
       const finishedNow = ['succeeded', 'failed'].includes(msg.task.status) && store.getTask(msg.task.id)?.status !== msg.task.status
       store.saveTask(msg.task)
       broadcast(IPC.onTaskUpdate, msg.task)
+      if (isTerminal(msg.task.status)) restRuntime()
       // With no pet on the desktop, a result nobody is looking at arrives as a notification.
       if (finishedNow && settings.petMode === 'menubar' && !panelWindow?.isVisible() && Notification.isSupported() && msg.task.summary) {
         const done = new Notification({ title: msg.task.status === 'succeeded' ? 'Kibu is done' : 'Kibu couldn’t finish', body: plainHeadline(msg.task.summary.headline) })
@@ -400,7 +426,8 @@ function onRuntimeMessage(msg: RuntimeToHost): void {
       }
       store.appendLog(entry)
       broadcast(IPC.onLog, entry)
-      if (msg.fatal) runtime.restart()
+      // A fatal runtime error exits the child. The exit handler records the
+      // interrupted task; the next request starts a fresh child on demand.
       break
     }
   }
@@ -502,13 +529,16 @@ function showPanel(): void {
   else fadeIn(panelWindow)
   panelWindow.moveTop()
   panelWindow.focus()
+  petPresence.setPanelOpen(true)
+  if (!currentTask || isTerminal(currentTask.status)) setPetState('listening')
+  if (runtimeIdleTimer) { clearTimeout(runtimeIdleTimer); runtimeIdleTimer = null }
 }
 
 /** Forgets where the panel was dragged and puts it back in the default spot. */
 function recenterPanel(): void {
   if (!panelWindow || panelWindow.isDestroyed()) return
   if (isPanelDocked()) { togglePanelDock(panelWindow); broadcastPanelState() }
-  if (!panelWindow.isVisible()) { panelWindow.show(); panelWindow.focus() }
+  if (!panelWindow.isVisible()) showPanel()
   centerPanel(panelWindow)
   saveSettings({ panelX: -1, panelY: -1 })
 }
@@ -544,6 +574,8 @@ function putAwayAfterBlur(): void {
 function hidePanel(): void {
   if (!panelWindow || panelWindow.isDestroyed()) return
   panelWindow.hide()
+  petPresence.setPanelOpen(false)
+  restRuntime()
   resetPanelDock(panelWindow)
   broadcastPanelState()
 }
@@ -686,6 +718,15 @@ function registerIpc(): void {
     runtime.send({ type: 'resume', taskId })
   })
   ipcMain.handle(IPC.taskCancel, (_e, taskId: string) => {
+    if (currentTask?.id === taskId && !runtime.isReady && !isTerminal(currentTask.status)) {
+      currentTask.status = 'cancelled'
+      currentTask.statusLine = 'Cancelled'
+      store.saveTask(currentTask)
+      broadcast(IPC.onTaskUpdate, currentTask)
+      setPetState('idle')
+      restRuntime()
+      return
+    }
     runtime.send({ type: 'cancel', taskId })
   })
 
@@ -775,25 +816,30 @@ function registerIpc(): void {
   // One measurement pass, answered by the runtime because that is where the
   // Jev client and its key live. Nothing here ever sees the key itself.
   ipcMain.handle(IPC.benchRun, async () => {
-    const rows = await new Promise<BenchRow[]>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        runtime.off('message', onMessage)
-        reject(new Error('the measurement did not finish in time'))
-      }, 60_000)
-      const onMessage = (msg: RuntimeToHost): void => {
-        if (msg.type !== 'bench-result') return
-        clearTimeout(timer)
-        runtime.off('message', onMessage)
-        resolve(msg.rows)
-      }
-      runtime.on('message', onMessage)
-      if (!runtime.send({ type: 'bench', jevApiKey: secrets.getJevKey(), model: DEFAULT_MODEL_CONFIG })) {
-        clearTimeout(timer)
-        runtime.off('message', onMessage)
-        reject(new Error('the task runtime is not running'))
-      }
-    })
-    return rows
+    if (measuring || (currentTask && !isTerminal(currentTask.status))) throw new Error('Finish the current work before measuring.')
+    measuring = true
+    try {
+      await runtime.ensureReady()
+      const rows = await new Promise<BenchRow[]>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          runtime.off('message', onMessage)
+          reject(new Error('the measurement did not finish in time'))
+        }, 60_000)
+        const onMessage = (msg: RuntimeToHost): void => {
+          if (msg.type !== 'bench-result') return
+          clearTimeout(timer)
+          runtime.off('message', onMessage)
+          resolve(msg.rows)
+        }
+        runtime.on('message', onMessage)
+        if (!runtime.send({ type: 'bench', jevApiKey: secrets.getJevKey(), model: DEFAULT_MODEL_CONFIG })) {
+          clearTimeout(timer)
+          runtime.off('message', onMessage)
+          reject(new Error('the task runtime is not running'))
+        }
+      })
+      return rows
+    } finally { measuring = false; restRuntime() }
   })
 
   ipcMain.handle(IPC.settingsGet, () => settings)
@@ -804,7 +850,7 @@ function registerIpc(): void {
       app.setLoginItemSettings({ openAtLogin: next.launchAtLogin })
     }
     if (next.onboarded !== undefined && typeof next.onboarded !== 'boolean') throw new Error('Invalid setup state.')
-    if (next.petMode !== undefined && !['peek', 'menubar', 'desktop'].includes(next.petMode)) throw new Error('Unknown place for the pet.')
+    if (next.petMode !== undefined && !['ondemand', 'peek', 'menubar', 'desktop'].includes(next.petMode)) throw new Error('Unknown place for the pet.')
     if (next.petMode !== undefined) next.petModeChosen = true
     if (next.codingApp !== undefined && !['claude-code', 'codex', 'opencode'].includes(next.codingApp)) throw new Error('Unknown coding app.')
     // A model name ends up as a command-line argument: it may only look like one.
@@ -820,6 +866,7 @@ function registerIpc(): void {
     // A key another app holds falls back to a free one, which is saved: report that one.
     if (updated.shortcut !== before) registerShortcut(updated.shortcut)
     if (next.petMode !== undefined) {
+      broadcast(IPC.onBrain, brain.snapshot())
       petPresence.update()
       tray?.setTitle('')
     }
@@ -1023,12 +1070,11 @@ if (!singleInstance) {
       })
     })
 
-    runtime.on('exit', ({ code, signal }: { code: number | null; signal: string | null }) => {
-      // Any exit while the app is running is unexpected: the runtime is meant
-      // to outlive every task. Reporting only non-zero codes would hide both a
-      // clean-but-premature exit and a failure to spawn at all.
-      if (quitting) return
-      const message = `The task runtime exited unexpectedly (code ${code}, signal ${signal}). Restarting it.`
+    runtime.on('exit', ({ code, signal, expected }: { code: number | null; signal: string | null; expected: boolean }) => {
+      // Idle shutdown is expected. Every other exit, even with code zero,
+      // interrupts any active task and must be reported.
+      if (quitting || expected) return
+      const message = `The task runtime exited unexpectedly (code ${code}, signal ${signal}). It will restart when needed.`
       console.error('[runtime]', message)
       store.appendLog({
         taskId: currentTask?.id ?? 'runtime',
@@ -1052,9 +1098,7 @@ if (!singleInstance) {
         broadcast(IPC.onTaskUpdate, currentTask)
         setPetState('failed')
       }
-      setTimeout(() => runtime.start(), 500)
     })
-    runtime.start()
 
     registerIpc()
 
@@ -1081,7 +1125,9 @@ if (!singleInstance) {
       // click on the pet or while macOS hands activation around.
       blurTimer = setTimeout(putAwayAfterBlur, 150)
     })
-    panelWindow.on('hide', () => notePanelFocus(false))
+    panelWindow.on('show', () => petPresence.setPanelOpen(true))
+    panelWindow.on('hide', () => { notePanelFocus(false); petPresence.setPanelOpen(false); restRuntime() })
+    panelWindow.on('close', (event) => { if (!quitting) { event.preventDefault(); hidePanel() } })
     panelWindow.on('moved', () => {
       // Only a panel the user dragged is worth remembering; the docked handle
       // and the open/close animations place themselves.
@@ -1118,6 +1164,7 @@ if (!singleInstance) {
   app.on('will-quit', async (event) => {
     event.preventDefault()
     quitting = true
+    if (runtimeIdleTimer) clearTimeout(runtimeIdleTimer)
     globalShortcut.unregisterAll()
     desktopSession?.dispose()
     await runtime?.stop()

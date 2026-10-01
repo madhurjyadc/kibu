@@ -48,10 +48,7 @@ export function createPetWindow(deps: PetWindowDeps, saved: { x: number; y: numb
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // A transparent, mostly click-through window is easily judged
-      // "covered" by macOS, which then throttles its timers and freezes the
-      // face mid-expression. The pet is tiny; keep its clock running.
-      backgroundThrottling: false
+      backgroundThrottling: true
     }
   })
 
@@ -63,6 +60,10 @@ export function createPetWindow(deps: PetWindowDeps, saved: { x: number; y: numb
   // through and only becomes solid when the pointer is actually on the
   // creature. Without this, a desktop pet is a dead patch of your screen.
   win.setIgnoreMouseEvents(true, { forward: true })
+  // Transparent windows can look covered to macOS even when visible. Keep
+  // visible animation smooth, but let the hidden renderer rest.
+  win.on('show', () => win.webContents.setBackgroundThrottling(false))
+  win.on('hide', () => win.webContents.setBackgroundThrottling(true))
 
   const target = deps.rendererUrl ? `${deps.rendererUrl}#pet` : deps.rendererFile
   if (deps.rendererUrl) void win.loadURL(target)

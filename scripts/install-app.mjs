@@ -45,4 +45,4 @@ if (existsSync(target)) {
 run('ditto', [built, target])
 run('open', [target])
 console.log(`\nKibu is installed at ${target} and running. Press ⌥Space to open it.`)
-console.log('To update later: git pull && npm install && npm run app')
+console.log('To update later: git pull && npm install && npx install-electron --no && npm run app')

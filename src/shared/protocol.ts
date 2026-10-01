@@ -431,8 +431,8 @@ export interface Settings {
   confirmEveryAction: boolean
   /** Little unprompted remarks from the pet: greetings, check-ins, the odd question. */
   chatty: boolean
-  /** Where the pet lives: always on the desktop, peeking out only when busy, or only in the menu bar. */
-  petMode: 'peek' | 'menubar' | 'desktop'
+  /** On demand by default; optional persistent desktop, edge peek, or menu bar presence. */
+  petMode: 'ondemand' | 'peek' | 'menubar' | 'desktop'
   /** The person picked petMode themselves; until then the default applies. */
   petModeChosen?: boolean
   /**
@@ -472,7 +472,7 @@ export const DEFAULT_SETTINGS: Settings = {
   workflowsFirst: true,
   confirmEveryAction: false,
   chatty: true,
-  petMode: 'desktop',
+  petMode: 'ondemand',
   useClaudeCode: false,
   codingApp: 'claude-code',
   claudeCodeModel: 'sonnet',
