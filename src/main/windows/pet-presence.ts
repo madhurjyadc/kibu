@@ -1,6 +1,8 @@
+import { dueItems, type BrainSnapshot } from '../../shared/brain.js'
+
 /**
  * Where the pet lives.
- *   ondemand: with the open prompt, during work, or for a due reminder.
+ *   ondemand: with the open prompt, during work, timers, or due reminders.
  *   peek:    out of sight until there is something to see: it slides up
  *             while Kibu works, needs an answer or runs a timer, stays a few
  *             seconds to show how things went, and comes when called by
@@ -44,6 +46,8 @@ export class PetPresence {
   private busy = false
   private attention = false
   private panelOpen = false
+  private dismissed = false
+  private attentionKeys = new Set<string>()
   private lingerUntil = 0
   private calledUntil = 0
   private edgeSince = 0
@@ -60,19 +64,45 @@ export class PetPresence {
   setState(state: string): void {
     const wasBusy = this.busy
     this.busy = state === 'thinking' || state === 'working' || state === 'waiting'
+    if (this.busy && !wasBusy) this.dismissed = false
     if (!this.busy && (state === 'finished' || state === 'failed' || wasBusy)) this.lingerUntil = this.now() + LINGER_MS
     this.update()
   }
 
   /** A timer is running or a reminder is due: both are shown on the pet. */
-  setAttention(value: boolean): void {
-    if (value === this.attention) return
+  setAttention(value: boolean, wake = false): void {
+    if (value && (!this.attention || wake)) this.dismissed = false
+    if (value === this.attention && !wake) return
     this.attention = value
+    this.update()
+  }
+
+  /** Countdowns stay visible; a fresh reminder or a timer ringing wakes a hidden pet. */
+  setBrain(state: BrainSnapshot): void {
+    const keys = new Set(dueItems(state).map((item) => `reminder:${item.id}`))
+    if (state.timer) keys.add(`timer:${state.timer.id}:${state.timer.status === 'ringing' ? 'due' : 'countdown'}`)
+    const fresh = [...keys].some((key) => !this.attentionKeys.has(key))
+    this.attentionKeys = keys
+    this.setAttention(keys.size > 0, fresh)
+  }
+
+  /** Hide just the pet until called again or a new task/alert needs it. */
+  hide(): void {
+    this.dismissed = true
+    this.lingerUntil = 0
+    this.calledUntil = 0
+    this.edgeSince = 0
+    this.update()
+  }
+
+  reveal(): void {
+    this.dismissed = false
     this.update()
   }
 
   /** Closing the prompt dismisses any completed result or explicit pet call. */
   setPanelOpen(value: boolean): void {
+    if (value && !this.panelOpen) this.dismissed = false
     this.panelOpen = value
     if (!value && this.deps.mode() === 'ondemand') {
       this.lingerUntil = 0
@@ -83,6 +113,7 @@ export class PetPresence {
 
   /** Shows the pet for a while, e.g. from the menu bar's "Show pet". */
   showFor(ms: number): void {
+    this.dismissed = false
     this.calledUntil = this.now() + ms
     this.update()
   }
@@ -90,7 +121,7 @@ export class PetPresence {
   /** Every cursor sample, whether or not the pet is showing. */
   sample(cursor: { x: number; y: number }): void {
     const win = this.deps.win()
-    if (!win || win.isDestroyed() || this.deps.mode() !== 'peek') return
+    if (!win || win.isDestroyed() || this.deps.mode() !== 'peek' || this.dismissed) return
     const now = this.now()
     const area = this.deps.displayAt(cursor)
     const atEdge = cursor.x >= area.x + area.width - 3 && cursor.y >= area.y + area.height - 260 && cursor.y <= area.y + area.height - 8
@@ -107,6 +138,7 @@ export class PetPresence {
   }
 
   wanted(): boolean {
+    if (this.dismissed) return false
     const mode = this.deps.mode()
     if (mode === 'desktop') return true
     if (mode === 'menubar') return false

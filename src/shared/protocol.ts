@@ -83,6 +83,8 @@ export const IPC = {
   benchRun: 'bench:run',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  appUninstallStatus: 'app:uninstall-status',
+  appUninstall: 'app:uninstall',
   revealPath: 'shell:reveal',
   openPath: 'shell:open',
   openUrl: 'shell:open-url',
@@ -317,6 +319,9 @@ export interface KibuBridge {
   runBench(): Promise<BenchRow[]>
   getSettings(): Promise<Settings>
   setSettings(s: Partial<Settings>): Promise<Settings>
+  canUninstallApp(): Promise<boolean>
+  /** Ask before stopping Kibu and moving its installed app to macOS Trash. */
+  uninstallApp(): Promise<boolean>
   revealPath(p: string): Promise<void>
   openPath(p: string): Promise<void>
   openUrl(url: string): Promise<void>
@@ -418,6 +423,8 @@ export interface Settings {
   launchAtLogin: boolean
   /** Global shortcut accelerator, Electron syntax. */
   shortcut: string
+  /** An explicitly chosen shortcut survives default shortcut migrations. */
+  shortcutChosen?: boolean
   /** Per-task spend ceiling in USD. */
   maxUsdPerTask: number
   /** Whether Jev (fast structured decisions) is enabled. */
@@ -466,7 +473,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   onboarded: false,
   launchAtLogin: false,
-  shortcut: 'Alt+Space',
+  shortcut: 'Command+Shift+Space',
   maxUsdPerTask: 1.5,
   jevEnabled: true,
   workflowsFirst: true,

@@ -28,7 +28,7 @@ git clone https://github.com/madhurjyadc/kibu.git && cd kibu && npm install && n
 build can take a few minutes without printing progress; let it finish.
 
 That builds **Kibu.app** on your Mac, puts it in Applications and opens it.
-Press **⌥Space** from anywhere, or click Kibu's face in the menu bar. An app
+Press **⌘⇧Space** from anywhere, or click Kibu's face in the menu bar. An app
 you build yourself opens without any Apple warning; because it is signed only
 for this build, macOS may ask for its permissions again after you update.
 
@@ -67,7 +67,7 @@ macOS permissions that thing needs. Nothing is asked for until you tap
 "Allow"; every card can be skipped. `/setup` shows it again, and Settings →
 Permissions lists everything in one place.
 
-1. **Hello**, and the shortcut, ⌥ Option + Space (not ⌘ Command + Space,
+1. **Hello**, and the shortcut, ⌘ Command + ⇧ Shift + Space (not ⌘ Command + Space,
    which is Spotlight's). Click it and press a new chord to change it; if
    another app already holds it, Kibu picks the next free one and shows that.
 2. **How Kibu thinks**: pick one of the coding apps found on this Mac (Claude
@@ -86,11 +86,11 @@ System Settings.
 
 ## Where the pet lives
 
-By default, Kibu stays out of sight. Press **⌥Space** to bring up the pet and
+By default, Kibu stays out of sight. Press **⌘⇧Space** to bring up the pet and
 prompt together. Close the prompt to put both away; the pet stays visible while
 work is running or waiting for your answer, briefly shows the result, and comes
-back when a reminder or timer is due. A running countdown alone does not keep
-the pet on screen.
+back when a reminder is due. A running or paused timer keeps the pet on screen
+until it is cancelled or dismissed.
 
 The background host keeps the shortcut and reminder clock available. When the
 workspace is closed and no task is running, the task runtime shuts down and
@@ -101,11 +101,15 @@ login for reminders** starts the host again when you log in.
 Settings → **The pet** also offers **always on the desktop**, **only while
 working** (with the right-edge hover shortcut), and **menu bar only**. An
 explicitly chosen mode is preserved across updates. While visible, drag the pet
-anywhere, drop files on it, or right-click it to dance or nap.
+anywhere, drop files on it, or right-click it to dance, nap, or **Hide Kibu**.
+Hiding only tucks away the pet: tasks, timers and reminders keep running. Call
+Kibu again to bring it back; a new task, due reminder or ringing timer also
+brings it back. The default shortcut avoids ChatGPT’s ⌥Space pet shortcut;
+change Kibu’s shortcut in Settings if you prefer another chord.
 
 ## Using it
 
-Press **⌥Space** or click Kibu’s face in the menu bar to open the pet and companion
+Press **⌘⇧Space** or click Kibu’s face in the menu bar to open the pet and companion
 workspace. The minimal home has one input and Find, Organize, and Rename actions.
 The clock opens History; the sliders open Settings.
 

@@ -186,7 +186,7 @@ export function Welcome({ onDone }: { onDone(compose?: string): void }): React.J
               <li><span>Jev</span><strong>{hasJev ? 'On' : 'Off, using my own rules'}</strong></li>
               <li><span>Allowed</span><strong>{setup.items.filter((i) => i.status === 'granted').length} of {setup.items.length} permissions</strong></li>
             </ul>
-            <p className="welcome-lead">Press <Keys accelerator={settings?.shortcut ?? 'Alt+Space'} /> and ask. A few to start with:</p>
+            <p className="welcome-lead">Press <Keys accelerator={settings?.shortcut ?? 'Command+Shift+Space'} /> and ask. A few to start with:</p>
             <ul className="rows">
               {TRY.map((t) => <li key={t}><button className="row-button" onClick={() => void finish(t)}><span className="row-icon"><Icon name="arrow" size={15} /></span><span className="row-title">{t}</span></button></li>)}
             </ul>

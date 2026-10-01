@@ -7,13 +7,15 @@ import { existsSync } from 'node:fs'
 import { BrainStore } from './services/brain.js'
 import { Store } from './services/db.js'
 import { Secrets } from './services/secrets.js'
+import { settingsFromSaved } from './services/settings.js'
+import { AppUninstaller } from './services/uninstall.js'
 import { RuntimeHost } from './services/runtime-host.js'
 import { DesktopSession } from './services/desktop-session.js'
 import { startUpdateChecks } from './services/updates.js'
 import { Setup, isSetupId } from './services/setup.js'
 import { undoTask } from './services/undo.js'
 import { PetPresence, createPetWindow, isPetHeld, setPetHitRects, setPetInteractive, updatePetHitTest } from './windows/pet.js'
-import { dueItems, type BrainSnapshot } from '../shared/brain.js'
+import type { BrainSnapshot } from '../shared/brain.js'
 import {
   createPanelWindow,
   positionPanelNearPet,
@@ -73,6 +75,7 @@ let currentTask: TaskState | null = null
 let settings: Settings = { ...DEFAULT_SETTINGS }
 let osAdapter: ReturnType<typeof createOsAdapter>
 let setup: Setup
+let uninstaller: AppUninstaller
 /** Set during shutdown so the runtime's exit is not reported as a crash. */
 let quitting = false
 let runtimeIdleTimer: ReturnType<typeof setTimeout> | null = null
@@ -122,21 +125,8 @@ function paths() {
  * Settings
  * ------------------------------------------------------------------ */
 
-/** The shortcut Kibu shipped with before ⌥Space; still on it means it was never chosen. */
-const OLD_DEFAULT_SHORTCUT = 'CommandOrControl+Shift+K'
-
 function loadSettings(): Settings {
-  const raw = store.getSetting('settings')
-  if (!raw) return { ...DEFAULT_SETTINGS }
-  try {
-    const saved = JSON.parse(raw) as Partial<Settings>
-    if (saved.shortcut === OLD_DEFAULT_SHORTCUT) delete saved.shortcut
-    // Apply the current default unless the person explicitly chose a mode.
-    if (!saved.petModeChosen) delete saved.petMode
-    return { ...DEFAULT_SETTINGS, ...saved }
-  } catch {
-    return { ...DEFAULT_SETTINGS }
-  }
+  return settingsFromSaved(store.getSetting('settings'))
 }
 
 function saveSettings(next: Partial<Settings>): Settings {
@@ -153,7 +143,7 @@ function broadcast(channel: string, payload: unknown): void {
   // A running timer or a due reminder is shown on the pet, so it comes out for them.
   if (channel === IPC.onBrain) {
     const state = payload as BrainSnapshot
-    petPresence.setAttention((settings.petMode === 'ondemand' ? state.timer?.status === 'ringing' : !!state.timer) || dueItems(state).length > 0)
+    petPresence.setBrain(state)
   }
   for (const win of [petWindow, panelWindow]) {
     if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -296,6 +286,7 @@ function previousTurn(followUp: string | null | undefined): PreviousTurn | null 
 }
 
 async function startTask(req: StartTaskRequest): Promise<TaskState> {
+  if (uninstaller.inProgress) throw new Error('Finish or cancel uninstalling Kibu before starting a task.')
   // A missing Anthropic key is no longer fatal: the Jev-only workflows can
   // still run, Claude Code can stand in for the planner, and the runtime
   // reports clearly if a request needs something that is not configured.
@@ -530,6 +521,7 @@ function showPanel(): void {
   panelWindow.moveTop()
   panelWindow.focus()
   petPresence.setPanelOpen(true)
+  petPresence.reveal()
   if (!currentTask || isTerminal(currentTask.status)) setPetState('listening')
   if (runtimeIdleTimer) { clearTimeout(runtimeIdleTimer); runtimeIdleTimer = null }
 }
@@ -585,12 +577,12 @@ function broadcastPanelState(): void {
 }
 
 /**
- * Kibu opens like Spotlight: one chord, from anywhere. ⌥Space sits next to
- * Spotlight's ⌘Space and takes one hand. If another app already holds the
+ * Kibu opens with one chord, from anywhere. ⌘⇧Space avoids ChatGPT's
+ * ⌥Space pet shortcut. If another app already holds the
  * chosen key, the next free one is used and saved, so the key shown in the
  * menu and in setup is always the one that works.
  */
-const SHORTCUT_FALLBACKS = ['Alt+Space', 'CommandOrControl+Shift+Space', 'CommandOrControl+Shift+K']
+const SHORTCUT_FALLBACKS = ['Command+Shift+Space', 'Alt+Shift+Space', 'CommandOrControl+Shift+K']
 
 function registerShortcut(accelerator: string): boolean {
   globalShortcut.unregisterAll()
@@ -632,6 +624,7 @@ function createTray(): void {
       { label: 'Open Kibu', accelerator: settings.shortcut, click: () => togglePanel(true) },
       { label: 'Workspace & timers', click: openBrain },
       { label: 'Show the pet', click: () => { recentrePet(); petPresence.showFor(5000) } },
+      { label: 'Hide Kibu', click: () => petPresence.hide() },
       { label: 'Center the panel', click: () => recenterPanel() },
       { type: 'separator' },
       {
@@ -692,6 +685,8 @@ function tickBrain(): void {
 }
 
 function registerIpc(): void {
+  ipcMain.handle(IPC.appUninstallStatus, () => uninstaller.available)
+  ipcMain.handle(IPC.appUninstall, () => uninstaller.uninstall())
   ipcMain.handle(IPC.brainGet, () => brain.snapshot())
   ipcMain.handle(IPC.brainOpen, openBrain)
   ipcMain.handle(IPC.brainRequest, (_e, req: unknown) => {
@@ -860,8 +855,9 @@ function registerIpc(): void {
       if (typeof value === 'string') next[key] = value.trim()
     }
     if (next.shortcut !== undefined && (typeof next.shortcut !== 'string' || !/^[A-Za-z0-9+]{1,60}$/.test(next.shortcut))) throw new Error('That is not a shortcut.')
-    if (next.shortcut !== undefined && /^(Command|CommandOrControl|CmdOrCtrl|Cmd)\+Space$/.test(next.shortcut)) throw new Error('⌘ Command + Space opens Spotlight. Pick another. ⌥ Option + Space is the default.')
+    if (next.shortcut !== undefined && /^(Command|CommandOrControl|CmdOrCtrl|Cmd)\+Space$/.test(next.shortcut)) throw new Error('⌘ Command + Space opens Spotlight. Pick another. ⌘ Command + ⇧ Shift + Space is the default.')
     const before = settings.shortcut
+    if (next.shortcut !== undefined) next.shortcutChosen = true
     const updated = saveSettings(next ?? {})
     // A key another app holds falls back to a free one, which is saved: report that one.
     if (updated.shortcut !== before) registerShortcut(updated.shortcut)
@@ -963,6 +959,7 @@ function registerIpc(): void {
     const play = (action: PetPlay) => () => petWindow?.webContents.send(IPC.onPetPlay, action)
     Menu.buildFromTemplate([
       { label: 'Open Kibu', click: () => togglePanelShow() },
+      { label: 'Hide Kibu', click: () => petPresence.hide() },
       { type: 'separator' },
       { label: 'Dance break', click: play('dance') },
       napping ? { label: 'Wake up', click: play('wake') } : { label: 'Little nap', click: play('nap') },
@@ -1025,6 +1022,39 @@ if (!singleInstance) {
     brain = new BrainStore(app.getPath('userData'))
     secrets = new Secrets(store)
     settings = loadSettings()
+    uninstaller = new AppUninstaller({
+      executable: () => app.getPath('exe'),
+      packaged: () => app.isPackaged && process.platform === 'darwin',
+      confirm: async () => {
+        if (!panelWindow || panelWindow.isDestroyed()) return false
+        panelDialogOpen = true
+        try {
+          const result = await dialog.showMessageBox(panelWindow, {
+            type: 'question', title: 'Uninstall Kibu',
+            message: 'Move Kibu to Trash?',
+            detail: 'Kibu will stop, including running tasks, timers and reminders, and will no longer open at login. Your saved history and settings stay on this Mac.',
+            buttons: ['Cancel', 'Move to Trash'], defaultId: 0, cancelId: 0
+          })
+          return result.response === 1
+        } finally { panelDialogOpen = false }
+      },
+      loginEnabled: () => app.getLoginItemSettings().openAtLogin,
+      setLoginEnabled: (value) => { app.setLoginItemSettings({ openAtLogin: value }); saveSettings({ launchAtLogin: value }) },
+      stopWork: async () => {
+        await runtime.stop()
+        if (currentTask && !isTerminal(currentTask.status)) {
+          currentTask.status = 'cancelled'
+          currentTask.statusLine = 'Stopped for uninstall'
+          currentTask.summary = { headline: 'Stopped for uninstall', evidence: [], undoable: store.undoableActions(currentTask.id).length > 0 }
+          store.saveTask(currentTask)
+          broadcast(IPC.onTaskUpdate, currentTask)
+          desktopSession.release(currentTask.id)
+          setPetState('idle')
+        }
+      },
+      trash: (bundle) => shell.trashItem(bundle),
+      quit: () => app.quit()
+    })
 
     const interrupted = store.recoverInterruptedTasks()
     if (interrupted.length) {

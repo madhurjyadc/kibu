@@ -19,9 +19,12 @@ export function Tune({ only, onKeyChange, onSetup }: { only?: 'keys'; onKeyChang
   const [note, setNote] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [canUninstall, setCanUninstall] = useState(false)
+  const [uninstalling, setUninstalling] = useState(false)
 
   async function refresh(): Promise<void> {
     setSettings(await window.kibu.getSettings())
+    if (only !== 'keys') setCanUninstall(await window.kibu.canUninstallApp())
     const has = await window.kibu.hasApiKey()
     setHasAnthropic(has)
     setHasJev(await window.kibu.hasJevKey())
@@ -51,6 +54,14 @@ export function Tune({ only, onKeyChange, onSetup }: { only?: 'keys'; onKeyChang
   async function update(next: Partial<Settings>): Promise<void> {
     try { setSettings(await window.kibu.setSettings(next)); onKeyChange(await window.kibu.canWork()) }
     catch (e) { setError(e instanceof Error ? e.message : 'Couldn’t update settings.') }
+  }
+
+  async function uninstall(): Promise<void> {
+    setUninstalling(true)
+    setError(null)
+    try { await window.kibu.uninstallApp() }
+    catch (e) { setError(e instanceof Error ? e.message : 'Couldn’t uninstall Kibu. You can quit it and move Kibu.app to Trash in Finder.') }
+    finally { setUninstalling(false) }
   }
 
   if (!settings) return <p className="pane-empty">{error || "Loading your preferences…"}</p>
@@ -98,13 +109,18 @@ export function Tune({ only, onKeyChange, onSetup }: { only?: 'keys'; onKeyChang
           <label className="row"><span>Budget / task ($)</span><input type="number" min={0.1} step={0.25} defaultValue={settings.maxUsdPerTask} onBlur={(e) => { const value = Number(e.target.value); if (Number.isFinite(value) && value >= 0.1) void update({ maxUsdPerTask: value }); else e.target.value = String(settings.maxUsdPerTask) }} /></label>
           <div className="row"><span>Open Kibu</span><ShortcutKey value={settings.shortcut} onChange={(shortcut) => void update({ shortcut })} /></div>
           <label className="row"><span>The pet</span><select aria-label="Where the pet lives" value={settings.petMode ?? 'ondemand'} onChange={(e) => void update({ petMode: e.target.value as Settings['petMode'] })}>
-            <option value="ondemand">When called, working, or reminding me</option>
+            <option value="ondemand">When called, working, timing, or reminding me</option>
             <option value="desktop">Always on the desktop</option>
             <option value="peek">Only while working (peeks from the corner)</option>
             <option value="menubar">Menu bar only</option>
           </select></label>
         </details>
         <details className="setting-section"><summary>Privacy & connections</summary><p className="dim">History stays on this Mac. Relevant task context goes to your model provider. Delete tasks from History to remove their saved data and undo records.</p><p className="dim">Anthropic handles open-ended tasks. TypeSafe assists quick file workflows. Claude Code, Codex or OpenCode on this Mac use your existing login, and Kibu keeps their conversations in its own history rather than theirs. File search works without a model key.</p></details>
+        <div className="setting-section">
+          <h2>Uninstall</h2>
+          <button className="danger-button" disabled={!canUninstall || uninstalling} onClick={() => void uninstall()}>{uninstalling ? 'Uninstalling…' : 'Uninstall Kibu…'}</button>
+          <p className="dim">{canUninstall ? 'Moves Kibu to Trash and turns off opening at login. Your saved history and settings stay on this Mac.' : 'Available in the installed Kibu app.'}</p>
+        </div>
       </>}
     </div>
   )
