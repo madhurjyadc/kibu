@@ -21,7 +21,7 @@ import { macTools } from './tools/mac.js'
 import { rememberTool } from './tools/memory.js'
 import { yourBrowserTools } from './tools/your-browser.js'
 import { TaskRunner } from './loop/task-runner.js'
-import { disposeWarmClaudeCode, prewarmClaudeCode, quickModel } from './model/claude-code-planner.js'
+import { disposeWarmClaudeCode, prewarmClaudeCode } from './model/claude-code-planner.js'
 import { createCodingAppPlanner } from './model/coding-apps.js'
 import { runBench } from './bench.js'
 import { createOsAdapter } from '../os/index.js'
@@ -76,10 +76,9 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
     return
   }
   const droppedPaths = (msg.task as TaskState & { droppedPaths?: string[] }).droppedPaths ?? []
-  // Answers run on the quick model, jobs on the full one. Both CLIs start up
-  // now, while the request is being read, instead of after.
+  // Start the selected Claude Code model while the request is being read.
   const claudeCode = msg.useClaudeCode && msg.codingApp === 'claude-code'
-  if (claudeCode) prewarmClaudeCode(quickModel(msg.model.claudeCode), msg.model.claudeCode)
+  if (claudeCode) prewarmClaudeCode(msg.model.claudeCode)
   runner = new TaskRunner(
     msg.task,
     {
@@ -115,7 +114,7 @@ async function startTask(msg: Extract<HostToRuntime, { type: 'start' }>): Promis
   const finished = await runner.run()
   send({ type: 'task-update', task: finished })
   // Ready for the next message before it is typed.
-  if (claudeCode) prewarmClaudeCode(quickModel(msg.model.claudeCode), msg.model.claudeCode)
+  if (claudeCode) prewarmClaudeCode(msg.model.claudeCode)
 }
 
 process.on('message', (raw: HostToRuntime) => {

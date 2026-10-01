@@ -291,6 +291,32 @@ summary { cursor: pointer; font: 600 10px/1 var(--mono); text-transform: upperca
 .key-save { padding: 7px 11px; color: var(--lime); font: 700 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; border-radius: 7px; } .key-save:hover:not(:disabled) { background: var(--lime-soft); }
 .habit { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin-top: 10px; font-size: 13px; } .habit input { width: 15px; height: 15px; accent-color: var(--lime); }
 .row { display: flex; gap: 12px; align-items: center; margin-top: 10px; font-size: 13px; } .row>span { width: 130px; flex-shrink: 0; } .row input { font: 12px var(--mono); } .row input[type=number] { width: 90px; }
+.model-picker { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hair); min-width: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.model-picker-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+.model-picker-top .welcome-link { margin: 0; flex-shrink: 0; }
+.model-search, .model-choice { display: block; margin-top: 8px; }
+.model-search input, .model-choice select { width: 100%; min-width: 0; font-size: 12px; }
+.model-picker p { font-size: 12px; line-height: 1.65; margin-top: 8px; }
+.model-custom { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.model-custom label { flex: 1; min-width: 0; }
+.model-custom input { width: 100%; font: 12px var(--mono); }
+.model-connection { color: var(--lime); text-transform: capitalize; }
+.model-recommendation { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin: 10px 0; padding: 10px; border: 1px solid var(--hair); border-radius: 8px; font-size: 12px; }
+.model-recommendation>div { flex: 1; min-width: 150px; }
+.model-recommendation .welcome-link { margin: 0; }
+.model-picker option:disabled { color: #777; }
+.model-choice select[data-unavailable="true"] { color: var(--dim); }
+.welcome-choice:disabled { opacity: .45; cursor: default; }
+.model-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.model-apply span { font-size: 11px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.model-success { color: var(--lime); }
+.model-picker strong, .model-picker p { overflow-wrap: anywhere; }
+.model-unavailable { margin-top: 10px; font-size: 12px; color: var(--dim); }
+.model-unavailable summary { cursor: pointer; }
+.model-unavailable ul { max-height: 180px; overflow-y: auto; padding-left: 18px; }
+.model-unavailable li { margin-top: 8px; }
+.model-unavailable li span { display: block; }
 .perms { list-style: none; padding: 0; margin: 0; } .perms li { display: flex; align-items: center; gap: 12px; margin-top: 8px; font-size: 13px; } .perms li>span:first-child { flex: 1; text-transform: capitalize; } .perms button { color: var(--lime); font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; } .perms .ok { font: 700 10px var(--mono); text-transform: uppercase; letter-spacing: .1em; }
 .help { list-style: none; padding: 0; margin: 10px 0 0; } .help li { display: flex; gap: 15px; padding: 6px 0; font-size: 13px; } .capability-note { color: var(--dim); font-size: 12px; } .permission-link { color: var(--lime); font-size: 12px; font-weight: 600; margin-top: 10px; }
 .steps ol, .looked { list-style: none; padding: 0; margin: 0; } .steps li { display: flex; gap: 10px; padding: 8px 0; font-size: 12px; border-bottom: 1px solid var(--hair); } .steps .mark { width: 12px; } .steps .success .mark { color: var(--lime); } .steps .failure .mark { color: var(--red); } .steps .what { flex: 1; display: flex; flex-direction: column; min-width: 0; gap: 3px; overflow-wrap: anywhere; } .steps .tool { font: 11px var(--mono); } .steps .dur { color: var(--dim); font: 10px var(--mono); } .looked { font-size: 11px; color: var(--dim); } .kind { margin-right: 8px; }

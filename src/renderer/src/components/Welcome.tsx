@@ -4,6 +4,7 @@ import { Sprite, type Mood } from './Sprite.js'
 import { Icon, type IconName } from './Icon.js'
 import { SetupList, asksInPlace, useSetup } from './Setup.js'
 import { Keys, ShortcutKey } from './ShortcutKey.js'
+import { ModelPicker, codingModelSetting } from './ModelPicker.js'
 
 /**
  * First run: a quick tour, one thing Kibu can do per card. Each card says it
@@ -79,7 +80,7 @@ export function Welcome({ onDone }: { onDone(compose?: string): void }): React.J
   // Enter moves on and arrows step, so the tour can be read without the mouse.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.target instanceof HTMLInputElement || document.querySelector('.shortcut-key.is-recording')) return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement || (e.target instanceof Element && e.target.closest('.model-picker')) || document.querySelector('.shortcut-key.is-recording')) return
       if (e.key === 'ArrowRight' || (e.key === 'Enter' && !last)) { e.preventDefault(); next() }
       if (e.key === 'ArrowLeft' && index > 0) { e.preventDefault(); setIndex(index - 1) }
     }
@@ -140,16 +141,18 @@ export function Welcome({ onDone }: { onDone(compose?: string): void }): React.J
 
           {card.id === 'think' && settings && <>
             <ul className="welcome-choices" role="radiogroup" aria-label="What Kibu thinks with">
-              {apps.filter((a) => a.available).map((a) => {
+              {apps.map((a) => {
                 const on = settings.useClaudeCode && settings.codingApp === a.id
-                return <li key={a.id}><button role="radio" aria-checked={on} className={`welcome-choice ${on ? 'is-on' : ''}`} onClick={() => { setUseKey(false); void update({ useClaudeCode: true, codingApp: a.id }) }}>
-                  <span className="welcome-radio" /><span><strong>{a.label}</strong><em>Found on this Mac. Uses the login it already has. Nothing to paste or pay.</em></span>
+                return <li key={a.id}><button role="radio" aria-checked={on} disabled={!a.available} className={`welcome-choice ${on ? 'is-on' : ''}`} onClick={() => { setUseKey(false); void update({ useClaudeCode: true, codingApp: a.id }) }}>
+                  <span className="welcome-radio" /><span><strong>{a.label}</strong><em>{a.available ? 'Found on this Mac. Uses your existing connection and its usage limits.' : 'Not installed on this Mac.'}</em></span>
                 </button></li>
               })}
               <li><button role="radio" aria-checked={!settings.useClaudeCode && (hasKey || useKey)} className={`welcome-choice ${!settings.useClaudeCode && (hasKey || useKey) ? 'is-on' : ''}`} onClick={() => { setUseKey(true); void update({ useClaudeCode: false }) }}>
                 <span className="welcome-radio" /><span><strong>Anthropic API key</strong><em>Claude Sonnet 5.5. You pay Anthropic per use; each task stops at ${settings.maxUsdPerTask.toFixed(2)}.</em></span>
               </button></li>
             </ul>
+            <button className="welcome-link" onClick={() => void window.kibu.codingApps().then(setApps).catch(() => setError('Couldn’t detect installed coding apps.'))}>Detect installed apps</button>
+            {settings.useClaudeCode && <ModelPicker key={settings.codingApp} app={settings.codingApp} value={settings[codingModelSetting(settings.codingApp)] ?? ''} onChange={async (change) => { setSettings(await window.kibu.setSettings(change)) }} />}
             {!settings.useClaudeCode && (useKey || hasKey) && <div className="key">
               <label htmlFor="welcome-key">Anthropic</label>
               <input id="welcome-key" type="password" placeholder={hasKey ? 'Saved in Keychain' : 'sk-ant-…'} value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && key.trim() && void saveKey()} />

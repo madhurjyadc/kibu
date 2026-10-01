@@ -79,6 +79,8 @@ export const IPC = {
   secretsStatusJev: 'secrets:status-jev',
   claudeCodeStatus: 'claude-code:status',
   codingAppsStatus: 'coding-apps:status',
+  codingModels: 'coding-apps:models',
+  codingModelCheck: 'coding-apps:model-check',
   canWork: 'status:can-work',
   benchRun: 'bench:run',
   settingsGet: 'settings:get',
@@ -266,6 +268,40 @@ export interface CodingAppStatus {
   available: boolean
 }
 
+export interface CodingModel {
+  id: string
+  label: string
+  /** Only true when the CLI explicitly reports zero input and output prices. */
+  free?: boolean
+  recommended?: boolean
+  recommendation?: string
+  description?: string
+  resolvedModel?: string
+  /** Listed is not a guarantee of entitlement or remaining quota. */
+  access?: 'listed' | 'unavailable' | 'verified'
+  reason?: string
+}
+
+export interface CodingModelCatalog {
+  models: CodingModel[]
+  note: string
+  connection?: string
+  defaultModel?: string
+}
+
+export interface CodingModelCheck {
+  ok: boolean
+  message: string
+  /** Only definitive access failures disable a choice; network errors can be retried. */
+  unavailable?: boolean
+  resolvedModel?: string
+}
+
+/** Model IDs are passed as a single argv value, never as shell code. */
+export function validCodingModel(value: unknown): value is string {
+  return typeof value === 'string' && /^(?!-)[A-Za-z0-9._/:@#\[\]+-]{0,256}$/.test(value)
+}
+
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   planner: 'claude-sonnet-5-5',
   jev: 'jev-latest',
@@ -313,6 +349,8 @@ export interface KibuBridge {
   hasClaudeCode(): Promise<boolean>
   /** Which coding apps are installed, so settings offers only what works. */
   codingApps(): Promise<CodingAppStatus[]>
+  codingModels(app: CodingApp, refresh?: boolean): Promise<CodingModelCatalog>
+  checkCodingModel(app: CodingApp, model: string): Promise<CodingModelCheck>
   /** Whether any planning route is configured: a key, or Claude Code. */
   canWork(): Promise<boolean>
   /** Times each route a request can take on this machine. */
@@ -445,7 +483,7 @@ export interface Settings {
   /**
    * Plan with a coding app on this Mac (Claude Code, Codex or OpenCode)
    * instead of an Anthropic API key. For running Kibu on your own machine
-   * with your own login; a distributed build must use a key. The name is
+   * with the person's own installed app and connection. The name is
    * kept from when Claude Code was the only one, so saved settings still load.
    */
   useClaudeCode: boolean

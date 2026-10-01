@@ -14,8 +14,7 @@ import type { TaskState } from '../../shared/types.js'
  * the apps is only how a message gets to them and back, which is all a
  * subclass supplies.
  *
- * Scope, stated plainly: this is for running Kibu on your own machine with
- * your own login. A distributed build must ship the API path instead.
+ * Each person uses the coding app and connection installed on their own machine.
  */
 
 export interface CliReply {
@@ -128,9 +127,9 @@ export abstract class CliPlanner implements PlannerLike {
       text: parsed.text,
       // The loop only distinguishes tool_use from everything else.
       stopReason: parsed.calls.length ? 'tool_use' : 'end_turn',
-      // Deliberately zero. A subscription bills nothing per step, and a
-      // would-be API price would trip the task's spending limit over money
-      // nobody spent. The step and wall-clock limits bound a runaway task.
+      // CLI costs are not tracked here. Calls can consume included quota or
+      // incur provider charges; the picker explains that the dollar cap does
+      // not cover this route. Step and wall-clock limits still bound tasks.
       usd: 0,
       inputTokens: raw.inputTokens,
       outputTokens: raw.outputTokens
@@ -252,7 +251,7 @@ const found = new Map<string, string>()
  */
 export function resolveBinary(name: string, envOverride: string, label: string, extra: string[] = []): string {
   const cached = found.get(name)
-  if (cached) return cached
+  if (cached && existsSync(cached) && !process.env[envOverride]) return cached
   const fromEnv = process.env[envOverride]
   if (fromEnv && existsSync(fromEnv)) return remember(name, fromEnv)
   try {

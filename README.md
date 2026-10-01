@@ -72,6 +72,21 @@ Permissions lists everything in one place.
    another app already holds it, Kibu picks the next free one and shows that.
 2. **How Kibu thinks**: pick one of the coding apps found on this Mac (Claude
    Code, Codex, OpenCode, each using its own login), or an Anthropic API key.
+   The same model picker appears in Settings → Connections. It fetches current
+   models and connection details from the installed app, highlights a recommendation,
+   and grays out known unavailable choices with a reason. Plan names are shown
+   when the app reports them; Kibu does not assume that a plan unlocks every model.
+   Search or refresh the list, or enter an exact custom model ID (including
+   provider/model IDs). **Check & use model** sends one short test reply and
+   saves the choice only if it succeeds; it may use quota or incur provider charges.
+   Failed checks preserve the previous choice. Refresh after signing in, changing
+   providers or upgrading a plan to retry unavailable choices.
+   OpenCode's **Show free models only** filter requires reported zero input and
+   output prices. Unknown pricing is not marked free; quota and provider restrictions
+   still apply. Each app's choice is saved separately. **Use configured default**
+   delegates selection to Codex or OpenCode without a test call. Catalog discovery
+   itself generates no reply. Kibu uses the selected Claude Code model for answers
+   and tasks, without automatically switching to another model.
    The same card asks for the optional TypeSafe key for Jev.
 3. **Files**: Desktop, Documents and Downloads.
 4. **Your day**: Calendar, Reminders, Notes and Mail.
@@ -262,8 +277,9 @@ what its first step would otherwise spend a round trip on:
   open in your browser, Finder's selection, or, only when you mention
   copying or pasting, the clipboard. They are fetched in parallel and handed
   to the planner as data.
-- **Whether the quick model will do.** Small jobs plan on Haiku with thinking
-  off.
+- **Whether a short answer will do.** The task loop can narrow the menu for
+  small jobs. Claude Code keeps the model the person selected; selecting Haiku
+  turns thinking off for that model.
 
 These are bets, and they are called off automatically: the first time the
 progress check says the work is not going well, the planner is shown every
@@ -283,7 +299,7 @@ Anthropic API, using the login already on the machine. Turn it on under
 One Claude Code process is started per task and kept open, fed one message
 per step over `--input-format stream-json`; starting the CLI costs about two
 seconds, so doing it once instead of every step roughly halves a task. It
-restarts on the same conversation only when the model tier changes. It runs with **no Claude Code tools
+restarts with Kibu's conversation replay if its process stops. It runs with **no Claude Code tools
 loaded or allowed** (`--tools "" --allowed-tools ""`), no user settings, hooks,
 skills or MCP servers (`--setting-sources "" --disable-slash-commands
 --strict-mcp-config`), from a neutral working directory, so that process can
@@ -292,27 +308,25 @@ of whatever project you happen to be sitting in. Kibu's system prompt
 *replaces* Claude Code's coding-agent prompt (`--system-prompt`), which takes a
 trivial step from about 4s to about 1.5s. It is handed Kibu's system prompt, Kibu's tool schemas, and the
 task's authorization, and it replies with one JSON object naming the calls it
-wants. The first turn opens a session; later turns `--resume` it, so the
-conversation is not resent each step.
+wants. Later messages go to the same running process, so the conversation
+is not resent each step. No session is saved to the CLI's history.
 
 Everything downstream is unchanged: the proposal still goes through the same
 registry check, schema parse, authorization check, protected-path refusal,
 verifier and undo record. A planner that proposes something out of scope is
 stopped by the same code that stops the API planner.
 
-Two honest caveats:
+Each person connects their own locally installed coding app. Kibu does not
+supply an account or grant access to paid models. Anthropic's current
+[subscription guidance](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan)
+states that `claude -p` and third-party app usage draw from subscription usage
+limits; API-key connections use provider billing. Plan access and quotas can
+change, so Kibu reads the connection and checks a model instead of maintaining
+an assumed plan-to-model table.
 
-- **This is for running Kibu on your own machine with your own login**,
-  which is how Kibu is installed today: everyone builds and runs their own
-  copy. Anthropic does not permit third-party products to offer claude.ai
-  login or subscription rate limits to *their* users without prior approval
-  ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)),
-  so a signed build distributed to other people should
-  lead with an API key instead.
-- **Nothing is billed, so the per-task spending limit does not apply on this
-  path**: it reports no cost rather than a number nobody is charged. The step
-  limit and the wall-clock limit are what bound a task here, and planning
-  steps consume your Claude Code usage allowance.
+Coding-app costs are not tracked by Kibu's per-task dollar limit. These calls
+may consume subscription quota or provider credits, or incur API charges.
+Kibu's step and wall-clock limits still bound tasks; provider limits apply.
 
 ### Running things on the command line
 

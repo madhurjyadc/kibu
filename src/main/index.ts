@@ -31,10 +31,11 @@ import {
   isPanelAnimating
 } from './windows/panel.js'
 import { createOsAdapter } from '../os/index.js'
-import { IPC, DEFAULT_MODEL_CONFIG, DEFAULT_SETTINGS } from '../shared/protocol.js'
+import { IPC, DEFAULT_MODEL_CONFIG, DEFAULT_SETTINGS, validCodingModel } from '../shared/protocol.js'
 import type {
   AnswerQuestionRequest,
   BenchRow,
+  CodingApp,
   FrontWindow,
   LogEntry,
   PetPlay,
@@ -48,6 +49,8 @@ import { normalizePath } from '../runtime/authorization.js'
 import { wouldLaunch } from '../runtime/tools/shell.js'
 import { claudeCodeAvailable } from '../runtime/model/claude-code-planner.js'
 import { codingAppAvailable, codingAppStatus } from '../runtime/model/coding-apps.js'
+import { codingModels } from '../runtime/model/coding-models.js'
+import { checkCodingModel } from '../runtime/model/coding-model-check.js'
 
 const isDev = !app.isPackaged
 const RENDERER_URL = process.env.ELECTRON_RENDERER_URL ?? null
@@ -290,7 +293,8 @@ async function startTask(req: StartTaskRequest): Promise<TaskState> {
   // A missing Anthropic key is no longer fatal: the Jev-only workflows can
   // still run, Claude Code can stand in for the planner, and the runtime
   // reports clearly if a request needs something that is not configured.
-  const planViaClaudeCode = settings.useClaudeCode && codingAppAvailable(settings.codingApp)
+  if (settings.useClaudeCode && !codingAppAvailable(settings.codingApp)) throw new Error('Your selected coding app is no longer installed. Choose an installed app in Settings.')
+  const planViaClaudeCode = settings.useClaudeCode
   if (measuring) throw new Error('Wait for the measurement to finish before starting a task.')
   if (currentTask && !isTerminal(currentTask.status)) throw new Error('A task is already running.')
 
@@ -805,6 +809,19 @@ function registerIpc(): void {
   ipcMain.handle(IPC.secretsStatusJev, () => secrets.hasJevKey())
   ipcMain.handle(IPC.claudeCodeStatus, () => claudeCodeAvailable())
   ipcMain.handle(IPC.codingAppsStatus, () => codingAppStatus())
+  ipcMain.handle(IPC.codingModels, (_e, codingApp: CodingApp, refresh?: boolean) => {
+    if (!['claude-code', 'codex', 'opencode'].includes(codingApp)) throw new Error('Unknown coding app.')
+    return codingModels(codingApp, refresh === true)
+  })
+  const checkingModels = new Set<CodingApp>()
+  ipcMain.handle(IPC.codingModelCheck, async (_e, codingApp: CodingApp, model: string) => {
+    if (!['claude-code', 'codex', 'opencode'].includes(codingApp)) throw new Error('Unknown coding app.')
+    if (typeof model !== 'string' || !model.trim() || !validCodingModel(model.trim())) throw new Error('Invalid model ID.')
+    if (checkingModels.has(codingApp)) return { ok: false, message: 'An access check is already running for this app. Wait a moment and retry.' }
+    checkingModels.add(codingApp)
+    try { return await checkCodingModel(codingApp, model.trim()) }
+    finally { checkingModels.delete(codingApp) }
+  })
   // The same condition startTask enforces, so the interface can never nag for
   // a key that is not actually needed.
   ipcMain.handle(IPC.canWork, () => canWork())
@@ -850,9 +867,10 @@ function registerIpc(): void {
     if (next.petMode !== undefined) next.petModeChosen = true
     if (next.codingApp !== undefined && !['claude-code', 'codex', 'opencode'].includes(next.codingApp)) throw new Error('Unknown coding app.')
     // A model name ends up as a command-line argument: it may only look like one.
-    for (const key of ['codexModel', 'opencodeModel'] as const) {
+    for (const key of ['claudeCodeModel', 'codexModel', 'opencodeModel'] as const) {
       const value = next[key]
-      if (value !== undefined && (typeof value !== 'string' || !/^(?!-)[A-Za-z0-9._/:@-]{0,100}$/.test(value.trim()))) throw new Error('That does not look like a model name.')
+      if (value !== undefined && (typeof value !== 'string' || !validCodingModel(value.trim()))) throw new Error('That does not look like a model name.')
+      if (key === 'claudeCodeModel' && typeof value === 'string' && !value.trim()) throw new Error('Choose a Claude Code model.')
       if (typeof value === 'string') next[key] = value.trim()
     }
     if (next.shortcut !== undefined && (typeof next.shortcut !== 'string' || !/^[A-Za-z0-9+]{1,60}$/.test(next.shortcut))) throw new Error('That is not a shortcut.')

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { CodingAppStatus, Memory, Settings } from '../../../shared/protocol.js'
 import { SetupList, useSetup } from './Setup.js'
 import { ShortcutKey } from './ShortcutKey.js'
+import { ModelPicker, codingModelSetting } from './ModelPicker.js'
 
 /**
  * Keys, habits and permissions: the only settings there are, written as
@@ -80,15 +81,13 @@ export function Tune({ only, onKeyChange, onSetup }: { only?: 'keys'; onKeyChang
             <button className="key-save" disabled={!provider.value.trim() || saving} onClick={() => void save(provider.id)}>Save</button>
           </div>
         ))}
-        {apps.some((a) => a.available) && <>
-          <label className="habit"><span>Plan with a coding app on this Mac</span><input type="checkbox" checked={settings.useClaudeCode} onChange={(e) => void update({ useClaudeCode: e.target.checked })} /></label>
+        <button className="welcome-link" onClick={() => void window.kibu.codingApps().then(setApps).catch(() => setError('Couldn’t detect installed coding apps.'))}>Detect installed apps</button>
+        {(apps.some((a) => a.available) || settings.useClaudeCode) && <>
+          <label className="habit"><span>Plan with a coding app on this Mac</span><input type="checkbox" checked={settings.useClaudeCode} onChange={(e) => void update({ useClaudeCode: e.target.checked, codingApp: apps.find((a) => a.id === settings.codingApp && a.available)?.id ?? apps.find((a) => a.available)?.id ?? settings.codingApp })} /></label>
           {settings.useClaudeCode && <label className="row"><span>Coding app</span><select aria-label="Coding app" value={settings.codingApp} onChange={(e) => void update({ codingApp: e.target.value as Settings['codingApp'] })}>
             {apps.map((a) => <option key={a.id} value={a.id} disabled={!a.available}>{a.label}{a.available ? '' : ' (not installed)'}</option>)}
           </select></label>}
-          {settings.useClaudeCode && settings.codingApp !== 'claude-code' && <label className="row"><span>Model</span><input key={settings.codingApp} aria-label="Coding app model"
-            placeholder={settings.codingApp === 'opencode' ? 'provider/model, or its default' : 'Its own default'}
-            defaultValue={settings.codingApp === 'codex' ? settings.codexModel : settings.opencodeModel}
-            onBlur={(e) => void update(settings.codingApp === 'codex' ? { codexModel: e.target.value } : { opencodeModel: e.target.value }).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Couldn’t save that model.'))} /></label>}
+          {settings.useClaudeCode && <ModelPicker key={settings.codingApp} app={settings.codingApp} value={settings[codingModelSetting(settings.codingApp)] ?? ''} onChange={async (change) => { setSettings(await window.kibu.setSettings(change)); onKeyChange(await window.kibu.canWork()) }} />}
         </>}
         {note && <p className="ok" role="status">Saved to Keychain.</p>}
       </div>

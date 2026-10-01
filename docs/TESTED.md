@@ -4,9 +4,30 @@ This file is deliberately blunt. The most dangerous failure mode for an
 assistant like this is a confident claim of work it did not do, and that
 applies to the project's own status as much as to a task result.
 
-Last updated: 29 September 2026, preparing the first public build.
+Last updated: 1 October 2026.
 
 ---
+
+## Model selection (1 October 2026)
+
+- Live metadata discovery passed against installed Codex (8 models, account plan,
+  configured default and recommendation) and Claude Code (12 model choices,
+  subscription details and default recommendation). Neither discovery started a
+  user turn or generated a reply. This does not verify access across every plan.
+- 64 focused tests passed: current catalogs, pagination, partial replies,
+  connection details, privacy filtering, missing credentials, timeouts, free vs
+  unknown pricing, provider recommendations, denied providers and text support,
+  exact model IDs, check error classification and Claude model substitution.
+- OpenCode is not installed on this Mac. Its metadata integration was checked
+  with an authenticated temporary local fixture server; its older CLI fallback
+  and explicit access checks were tested with stand-in CLIs/JSON event fixtures.
+- Renderer checks passed for draft recommendations, disabled model choices,
+  failed access preserving the saved model, late checks after switching apps,
+  separate saved choices, configured defaults, free filtering, custom IDs,
+  failed catalog refresh, compact layout, setup and keyboard navigation.
+- The production build passed. No live generation checks were run across model
+  plans or providers; **Check & use model** performs that check on the user's
+  connection only after their explicit click and may consume quota or credits.
 
 ## Verified live on a real Mac (26 September 2026)
 

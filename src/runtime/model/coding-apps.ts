@@ -87,11 +87,11 @@ export class OpenCodePlanner extends CliPlanner {
   }
 }
 
-function resolveCodex(): string {
+export function resolveCodex(): string {
   return resolveBinary('codex', 'KIBU_CODEX_BIN', 'Codex')
 }
 
-function resolveOpenCode(): string {
+export function resolveOpenCode(): string {
   return resolveBinary('opencode', 'KIBU_OPENCODE_BIN', 'OpenCode', [join(process.env.HOME ?? '', '.opencode/bin/opencode')])
 }
 

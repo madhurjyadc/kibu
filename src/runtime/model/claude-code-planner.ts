@@ -10,17 +10,14 @@ export { parseProposal } from './cli-planner.js'
  * Planning through the Claude Code CLI on this Mac (`claude -p`), with every
  * Claude Code tool denied, so it can only answer. The shared behaviour (the
  * reply contract, the transcript, parsing) lives in CliPlanner; this is the
- * transport, plus the two things only Claude Code offers: a process that
- * stays open for the whole task, and a quick model for plain answers.
- *
- * See https://code.claude.com/docs/en/agent-sdk/overview for why a
- * distributed build must ship the API path instead.
+ * transport and a process that stays open for the whole task.
+ * The selected model is honored for both answers and tasks.
  */
 
 export interface ClaudeCodeOptions {
   /** Overrides binary discovery. */
   bin?: string
-  /** A Claude Code model alias. Sonnet keeps a subscription's quota going furthest. */
+  /** A Claude Code model alias or exact model ID selected by the person. */
   model?: string
   timeoutMs?: number
   /**
@@ -37,8 +34,7 @@ export class ClaudeCodePlanner extends CliPlanner {
   /** Kibu's prompt goes in as Claude Code's system prompt instead. */
   protected override readonly inlineInstructions = false
   private readonly model: string
-  private tier: 'quick' | 'full' = 'full'
-  readonly quickSwapsModel = true
+  readonly quickSwapsModel = false
   private readonly timeoutMs: number
   /** One long-lived CLI process for the whole task; see StreamSession. */
   private stream: StreamSession | null = null
@@ -49,19 +45,15 @@ export class ClaudeCodePlanner extends CliPlanner {
     this.timeoutMs = options.timeoutMs ?? 180_000
   }
 
-  setTier(tier: 'quick' | 'full'): void {
-    this.tier = tier
-  }
-
   /** Ends the CLI process. The runner calls this when the task is over. */
   dispose(): void {
     this.stream?.close()
     this.stream = null
   }
 
-  /** Haiku for plain answers, unless the user already chose something lighter. */
+  /** Honor the model the person selected, including for short answers. */
   private get activeModel(): string {
-    return this.tier === 'quick' ? quickModel(this.model) : this.model
+    return this.model
   }
 
   protected holdsConversation(): boolean {
@@ -143,11 +135,6 @@ function commonArgs(): string[] {
     '--system-prompt',
     SYSTEM_PROMPT
   ]
-}
-
-/** The model a quick job runs on: Haiku, unless the user already chose something lighter. */
-export function quickModel(model: string): string {
-  return /haiku/i.test(model) ? model : 'haiku'
 }
 
 /** Arguments for one long-lived CLI session. */

@@ -1,7 +1,6 @@
 import type { OsAdapter } from '../../os/adapter.js'
 import type { Evidence } from '../../shared/types.js'
 import type { CodingApp, ModelConfig } from '../../shared/protocol.js'
-import { quickModel } from '../model/claude-code-planner.js'
 
 /**
  * Answering "what are you?" without a model call.
@@ -52,7 +51,7 @@ function modelName(id: string): string {
 export function describeModels(route: 'api' | CodingApp | null, model: ModelConfig, jev: boolean): SelfDescription {
   const headline =
     route === 'claude-code'
-      ? `I think with Claude, through the Claude Code on this Mac: ${modelName(quickModel(model.claudeCode))} for quick answers, ${modelName(model.claudeCode)} for anything I do on your Mac.`
+      ? `I think with Claude, through the Claude Code on this Mac, using ${modelName(model.claudeCode)} for answers and tasks.`
       : route === 'codex' || route === 'opencode'
         ? `I think through the ${route === 'codex' ? 'Codex' : 'OpenCode'} on this Mac, with ${(route === 'codex' ? model.codex : model.opencode) || 'the model it is set up to use'}.`
       : route === 'api'
