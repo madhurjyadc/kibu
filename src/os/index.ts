@@ -31,6 +31,7 @@ class UnimplementedAdapter implements OsAdapter {
   async inspectWindow(): Promise<never> { this.fail('window.inspect') }
   async pressElement(): Promise<never> { this.fail('element.act') }
   async setElementValue(): Promise<never> { this.fail('element.act') }
+  async pressWebElement(): Promise<never> { this.fail('element.act') }
   async click(): Promise<never> { this.fail('input.synthetic') }
   async typeText(): Promise<never> { this.fail('input.synthetic') }
   async shortcut(): Promise<never> { this.fail('input.synthetic') }

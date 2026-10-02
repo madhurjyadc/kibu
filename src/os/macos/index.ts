@@ -109,6 +109,10 @@ export class MacOsAdapter implements OsAdapter {
     )
   }
 
+  pressWebElement(pid: number, label: string): Promise<{ pressed: boolean; reason?: string }> {
+    return this.bridge.call('pressWebElement', { pid, label, timeoutMs: 6000 }, 12_000)
+  }
+
   async setElementValue(ref: ElementRef, value: string): Promise<void> {
     const res = await this.withStaleCheck(() =>
       this.bridge.call<{ value: string; matches: boolean }>('setElementValue', {

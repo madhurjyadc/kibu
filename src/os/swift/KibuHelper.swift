@@ -401,6 +401,60 @@ func postScroll(x: Double, y: Double, dx: Int, dy: Int) throws {
     scroll.post(tap: .cghidEventTap)
 }
 
+// MARK: - Web pages
+
+/// Finds the element a page program labelled with a one-time `label` and
+/// performs AXPress on it.
+///
+/// Browsers only let a video start with sound after a person's action, and a
+/// click from a page script does not count. An accessibility press does: it is
+/// how screen reader users press play. It needs no pointer and no key.
+func pressWebElement(pid: pid_t, label: String, timeout: TimeInterval) throws -> [String: Any] {
+    let app = AXUIElementCreateApplication(pid)
+    // Browsers build the page's accessibility tree only once an assistive app
+    // asks: Electron-style apps take AXManualAccessibility, Chrome only the
+    // switch VoiceOver flips (it reports an error, then complies within ~2s).
+    // Safari always has the tree. The switch goes back off afterwards.
+    AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    let setEnhanced = !axBool(app, "AXEnhancedUserInterface")
+    if setEnhanced { AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue) }
+    defer { if setEnhanced { AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse) } }
+
+    func matches(_ el: AXUIElement) -> Bool {
+        axString(el, kAXDescriptionAttribute as String) == label || axString(el, kAXTitleAttribute as String) == label
+    }
+    func find() -> AXUIElement? {
+        // The page focused the element, so it is usually right here.
+        if let f = axCopy(app, kAXFocusedUIElementAttribute as String), CFGetTypeID(f) == AXUIElementGetTypeID() {
+            let focused = f as! AXUIElement
+            if matches(focused) { return focused }
+        }
+        // Otherwise walk the front window in document order; the player sits near the top.
+        guard let w = axCopy(app, kAXFocusedWindowAttribute as String) ?? axCopy(app, kAXMainWindowAttribute as String),
+              CFGetTypeID(w) == AXUIElementGetTypeID() else { return nil }
+        var stack = [w as! AXUIElement]
+        var budget = 6000
+        while let el = stack.popLast(), budget > 0 {
+            budget -= 1
+            if matches(el) { return el }
+            stack.append(contentsOf: axChildren(el).reversed())
+        }
+        return nil
+    }
+
+    let start = Date()
+    var element: AXUIElement?
+    while Date().timeIntervalSince(start) < timeout {
+        element = find()
+        if element != nil { break }
+        usleep(200_000)
+    }
+    guard let target = element else { return ["pressed": false, "reason": "not-found"] }
+    let err = AXUIElementPerformAction(target, kAXPressAction as CFString)
+    guard err == .success else { return ["pressed": false, "reason": "AX error \(err.rawValue)"] }
+    return ["pressed": true, "role": axString(target, kAXRoleAttribute as String) ?? ""]
+}
+
 // MARK: - Capture (ScreenCaptureKit)
 
 func captureWindow(pid: pid_t, windowId: String?, outputPath: String) throws -> [String: Any] {
@@ -643,6 +697,12 @@ func handle(_ req: Request) {
             // Read back: AX writes can silently no-op in some apps.
             let readBack = axString(element, kAXValueAttribute as String) ?? ""
             respond(id: req.id, ok: true, value: ["value": readBack, "matches": readBack == value], error: nil)
+
+        case "pressWebElement":
+            guard let pid = intArg("pid"), let label = str("label") else { throw HelperError(message: "pid and label required") }
+            guard AXIsProcessTrusted() else { throw HelperError(message: "Accessibility permission required") }
+            let value = try pressWebElement(pid: pid_t(pid), label: label, timeout: (num("timeoutMs") ?? 6000) / 1000)
+            respond(id: req.id, ok: true, value: value, error: nil)
 
         case "click":
             guard let x = num("x"), let y = num("y") else { throw HelperError(message: "x and y required") }

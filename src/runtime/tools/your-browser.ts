@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { macBridge, SCRIPTS } from '../../os/macos/scripting.js'
 import { externalWebUrl } from '../../shared/web-url.js'
@@ -21,6 +22,13 @@ import type { ToolContext, ToolDefinition } from './registry.js'
  *  - Never a password field, and never typing into a sign-in form.
  *  - While Kibu acts, the pet and panel show that it is using the browser,
  *    and ⌘⇧Esc stops it.
+ *
+ * One exception to "page programs only": starting a video. Browsers let a
+ * video play with sound only after the person's own action, and a page
+ * script's play() or click() is never that, so YouTube stays paused. An
+ * accessibility press of the player's play button is (it is how screen
+ * readers press play), so `your_browser_media` uses one. Still no pointer and
+ * no key.
  */
 
 const BROWSERS = ['Google Chrome', 'Brave Browser', 'Microsoft Edge', 'Chromium', 'Arc', 'Safari']
@@ -97,18 +105,60 @@ const SCROLL = `function (arg) {
 }`
 
 const MEDIA = `function (arg) {
-  var vs = Array.prototype.filter.call(document.querySelectorAll('video'), function (v) { return v.getBoundingClientRect().width > 100 })
-  var v = vs[0]
+  // The main video is the biggest one; feeds also hold small hover previews.
+  var v = null, area = 0
+  Array.prototype.forEach.call(document.querySelectorAll('video'), function (el) {
+    var r = el.getBoundingClientRect()
+    if (r.width > 100 && r.width * r.height > area) { area = r.width * r.height; v = el }
+  })
   if (!v) return JSON.stringify({ found: false })
   if (arg.action === 'play' && v.paused) {
+    if (arg.muted) v.muted = true
     var p = v.play(); if (p && p.catch) p.catch(function () {})
-    if (arg.pressButton) {
-      var b = document.querySelector('button[aria-label^="Play" i],[title^="Play" i],.ytp-play-button')
-      if (b && v.paused) b.click()
-    }
   }
   if (arg.action === 'pause' && !v.paused) v.pause()
   return JSON.stringify({ found: true, paused: v.paused, time: Math.round(v.currentTime), duration: Math.round(v.duration || 0), muted: v.muted, title: document.title })
+}`
+
+// Marks the player's own play button (else the video itself) with a one-time
+// label and focuses it, so the helper can find it and press it through
+// accessibility. With arg.restore, puts back the label it replaced.
+const PLAY_CONTROL = `function (arg) {
+  document.querySelectorAll('[data-kibu-play]').forEach(function (el) {
+    var old = el.getAttribute('data-kibu-play')
+    // The player may have relabelled it (Play becomes Pause); leave that alone.
+    if (/^Kibu play /.test(el.getAttribute('aria-label') || '')) {
+      if (old) el.setAttribute('aria-label', old.slice(1)); else el.removeAttribute('aria-label')
+    }
+    if (el.hasAttribute('data-kibu-tabindex')) { el.removeAttribute('tabindex'); el.removeAttribute('data-kibu-tabindex') }
+    el.removeAttribute('data-kibu-play')
+  })
+  if (arg.restore) return JSON.stringify({ ok: true })
+  var video = null, area = 0
+  Array.prototype.forEach.call(document.getElementsByTagName('video'), function (el) {
+    var r = el.getBoundingClientRect()
+    if (r.width > 100 && r.width * r.height > area) { area = r.width * r.height; video = el }
+  })
+  if (!video) return JSON.stringify({ ok: false })
+  var vr = video.getBoundingClientRect(), target = null
+  var buttons = document.querySelectorAll('button,[role=button]')
+  for (var i = 0; i < buttons.length && !target; i++) {
+    var b = buttons[i], name = (b.getAttribute('aria-label') || b.getAttribute('title') || b.innerText || '').replace(/\\s+/g, ' ').trim()
+    if (!/^play\\b/i.test(name) || /^play (all|next)/i.test(name)) continue
+    var r = b.getBoundingClientRect()
+    // A player's controls sit over the video or just under it.
+    if (r.width >= 4 && r.height >= 4 && r.left < vr.right && r.right > vr.left && r.top < vr.bottom + 60 && r.bottom > vr.top) target = b
+  }
+  var kind = target ? 'button' : 'video'
+  if (!target) {
+    target = video
+    if (!target.hasAttribute('tabindex')) { target.setAttribute('tabindex', '-1'); target.setAttribute('data-kibu-tabindex', '') }
+  }
+  var old = target.getAttribute('aria-label')
+  target.setAttribute('data-kibu-play', old === null ? '' : '=' + old)
+  target.setAttribute('aria-label', arg.label)
+  if (target.focus) target.focus({ preventScroll: true })
+  return JSON.stringify({ ok: true, kind: kind })
 }`
 
 const STATUS = `function () { return JSON.stringify({ ready: document.readyState, url: location.href, title: document.title }) }`
@@ -317,9 +367,34 @@ export const yourBrowserScroll: ToolDefinition = {
   }
 }
 
+type Media = { found: boolean; paused?: boolean; time?: number; duration?: number; muted?: boolean; title?: string }
+
+/**
+ * Presses the player's play button through accessibility, which browsers
+ * count as the person's own action. Returns why it could not, or null.
+ */
+async function pressPlay(ctx: ToolContext, browser: string): Promise<string | null> {
+  if (!ctx.os?.supports('element.act')) return 'accessibility is not available'
+  const app = (await ctx.os.listApps().catch(() => [])).find((a) => a.name === browser)
+  if (!app) return `${browser} is not running`
+  const label = `Kibu play ${randomUUID().slice(0, 8)}`
+  const marked = await run<{ ok: boolean }>(PLAY_CONTROL, { label }, browser)
+  if (!marked.result?.ok) return 'there is no player to press'
+  try {
+    const res = await ctx.os.pressWebElement(app.pid, label)
+    return res.pressed ? null : `the play button could not be pressed (${res.reason ?? 'unknown'})`
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  } finally {
+    await run(PLAY_CONTROL, { restore: true }, browser).catch(() => {})
+  }
+}
+
 export const yourBrowserMedia: ToolDefinition = {
   name: 'your_browser_media',
-  description: "Play, pause or check the video on the page in the user's browser. Use it to make sure a video is actually playing.",
+  description:
+    "Play, pause or check the video on the page in the user's browser. Use it after opening a video to make sure it is actually playing; " +
+    "when the browser blocks a script from starting it, this presses the player's own play button the way a screen reader does.",
   capability: 'yourbrowser.act',
   exclusiveDesktop: true,
   input: z.object({ action: z.enum(['play', 'pause', 'status']), ...browserInput }),
@@ -329,26 +404,47 @@ export const yourBrowserMedia: ToolDefinition = {
     const browser = await chooseBrowser(i.browser)
     const page = await currentPage(browser)
     await ensureSite(ctx, page.url, browser)
-    type Media = { found: boolean; paused?: boolean; time?: number; duration?: number; title?: string }
-    let r = (await run<Media>(MEDIA, { action: i.action }, browser)).result
-    if (i.action === 'play' && r.found && r.paused) {
-      // Some players only start from their own play button.
-      await sleep(900)
-      r = (await run<Media>(MEDIA, { action: 'play', pressButton: true }, browser)).result
-      await sleep(900)
-      r = (await run<Media>(MEDIA, { action: 'status' }, browser)).result
-    } else if (i.action === 'play') {
-      await sleep(900)
-      r = (await run<Media>(MEDIA, { action: 'status' }, browser)).result
+    const media = async (arg: object): Promise<Media> => (await run<Media>(MEDIA, arg, browser)).result ?? { found: false }
+    const status = async (): Promise<Media> => { await sleep(900); return media({ action: 'status' }) }
+
+    // A page reached by a click (YouTube moves between pages without
+    // reloading) may not have its player yet.
+    let r = await media({ action: i.action })
+    for (let waited = 0; !r.found && waited < 6000; waited += 500) {
+      await sleep(500)
+      r = await media({ action: i.action })
     }
     if (!r.found) throw new Error('There is no video on this page.')
-    return { result: r }
+    if (i.action !== 'play') return { result: r }
+
+    r = await status()
+    let soundBlocked = false
+    if (r.paused) {
+      ctx.progress('Pressing play')
+      const failed = await pressPlay(ctx, browser)
+      if (failed) ctx.log('info', `accessibility press of play: ${failed}`)
+      r = await status()
+      // The press counts as their action for this page, so a script may now start it.
+      if (r.paused && !failed) { await media({ action: 'play' }); r = await status() }
+    }
+    if (r.paused) {
+      // Browsers always let a muted video play.
+      await media({ action: 'play', muted: true })
+      r = await status()
+      soundBlocked = !r.paused
+    }
+    return { result: { ...r, soundBlocked } }
   },
   async verify(i, outcome) {
-    const r = outcome.result as { paused?: boolean }
+    const r = outcome.result as { paused?: boolean; soundBlocked?: boolean }
     if (i.action === 'status') return { verified: true, method: 'readback', detail: r.paused ? 'paused' : 'playing' }
     const ok = i.action === 'play' ? r.paused === false : r.paused === true
-    return { verified: ok, method: 'video-readback', detail: r.paused ? 'the video is paused' : 'the video is playing' }
+    const detail = r.paused
+      ? 'the video is paused'
+      : r.soundBlocked
+        ? 'the video is playing without sound: the browser only allows sound after a click, so tell the user to press the speaker button to unmute'
+        : 'the video is playing'
+    return { verified: ok, method: 'video-readback', detail }
   }
 }
 

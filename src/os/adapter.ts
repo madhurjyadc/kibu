@@ -123,6 +123,12 @@ export interface OsAdapter {
 
   pressElement(ref: ElementRef, action?: string): Promise<void>
   setElementValue(ref: ElementRef, value: string): Promise<void>
+  /**
+   * Presses, through accessibility, the element in a browser page that a page
+   * program has labelled `label`. Unlike a click from page script, browsers
+   * treat this as the person's own action (it is how screen readers press).
+   */
+  pressWebElement(pid: number, label: string): Promise<{ pressed: boolean; reason?: string }>
 
   click(point: { x: number; y: number }, opts?: { button?: 'left' | 'right'; count?: number }): Promise<void>
   typeText(text: string): Promise<void>
